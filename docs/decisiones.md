@@ -104,3 +104,14 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
   perfil sin exponer ningún correo, y el trailer refleja con transparencia el flujo
   spec → plan → implementación con Claude Code, que es parte de la historia que voy a
   contar en entrevistas.
+
+### D13. Corpus fijado al tag 0.162.0 de FastAPI y Postgres en el puerto 5433
+- **Elegido:** `FASTAPI_DOCS_REF` por defecto = `0.162.0`, el último release estable de
+  `fastapi/fastapi` al construir (resuelto con `gh api repos/fastapi/fastapi/releases/latest`).
+  El Postgres de compose se expone en el host como `localhost:5433` (dentro de compose
+  sigue siendo `db:5432`).
+- **Alternativas:** seguir `master`/`latest` en cada ingesta; usar el puerto estándar 5432.
+- **Por qué:** un tag fijo hace la ingesta reproducible: el mismo corpus produce los mismos
+  chunks y las citas no cambian entre ejecuciones. Se actualiza a propósito, no por
+  accidente. El 5433 evita chocar con un Postgres local ya instalado en el 5432, que es lo
+  habitual en una máquina de desarrollo.
