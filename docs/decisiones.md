@@ -89,7 +89,7 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
 ### D11. `uv` en el host, tests unitarios locales, integración contra el Postgres de compose
 - **Elegido:** instalar `uv` a nivel de usuario; uv gestiona Python 3.12. `uv run pytest`
   en el host, y los tests de integración (marker `integration`) usan
-  `localhost:5432`.
+  `localhost:5433` (puerto del host del servicio `db` de compose).
 - **Alternativas:** correr todo dentro de contenedores; usar el Python 3.13 del sistema.
 - **Por qué:** el ciclo de los tests es mucho más rápido en el host, y uv aísla la
   versión de Python sin tocar la del sistema. La imagen de Docker usa la misma 3.12 y el
