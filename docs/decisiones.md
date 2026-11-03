@@ -161,3 +161,17 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
 - **Elegido:** `run_ingest` suma los `token_count` de los fragmentos y, si supera `INGEST_MAX_TOKENS`, lanza `IngestLimitExceeded` antes de llamar a OpenAI. Los embeddings se piden en lotes de 100. `replace_corpus` hace `DELETE ... WHERE source_ref` + `INSERT` y confirma con un `commit()` explícito (con `rollback()` si algo falla). El uso real (`usage.total_tokens`) se registra al final con `record_usage(KIND_INGEST)`.
 - **Alternativas:** `with conn.transaction()` en `replace_corpus`; borrar y reinsertar todo el contenido de la tabla; estimar el coste solo con el uso real tras embeber.
 - **Por qué:** el tope previo evita una factura sorpresa por un corpus inesperadamente grande: aborta antes de gastar nada. Reemplazar por `source_ref` en una sola transacción hace la ingesta idempotente y nunca deja la tabla a medias (o está el corpus viejo o el nuevo). `conn.transaction()` se descartó porque, si la conexión ya tiene una transacción de lectura abierta (p. ej. tras `tokens_used_today`), solo crea un savepoint y no confirma; el `commit()` explícito es inequívoco y está cubierto por un test que lee desde otra conexión.
+
+### D19. Respuesta estructurada, citas validadas y conexión por petición en `/ask`
+- **Elegido:** `client.chat.completions.parse(..., response_format=LLMAnswer, temperature=0)` (openai 3.42.1 ya expone `parse` fuera de `beta`) con esquema `{answer, citations: list[str]}`. Las URLs citadas se validan contra los fragmentos recuperados (comparación exacta tras `strip()`, sin duplicados, orden citado); las que no están se descartan. Si se descartan todas: 200 con `citations: []` y `grounded: false`, sin reintento. Errores `openai.APIError` en embedding o chat -> 502 sin registrar uso; presupuesto agotado -> 429; corpus vacío -> 503. Uso registrado = embedding + prompt + completion tokens. Cada petición abre su propia conexión a Postgres (`get_conn`, se cierra al terminar), sin pool.
+- **Alternativas:** pedir JSON libre y parsearlo a mano; reintentar cuando todas las citas son inválidas; pool de conexiones; `temperature` por defecto.
+- **Por qué:** la salida estructurada garantiza un esquema válido sin parseo frágil. El modelo puede inventar URLs, así que la cita solo vale si existe en el contexto recuperado: validar en código es lo que hace que "cita" signifique algo. Sin reintento se mantiene el coste predecible y se expone honestamente `grounded: false`. `temperature=0` hace las respuestas lo más reproducibles posible para evaluar. Sin pool en S1: el tráfico es mínimo, abrir una conexión local cuesta milisegundos y evita gestionar ciclo de vida, límites y conexiones obsoletas; se revisará si la latencia lo pide.
+- **Prompt de sistema (tal cual):**
+  ```
+  You answer questions about the FastAPI documentation.
+  - Answer ONLY with the information in the numbered context fragments provided.
+  - Reply in the same language as the user's question.
+  - In `citations`, list the exact URLs (copied verbatim) of the fragments you actually used.
+  - If the context is not enough to answer, say you don't know and leave `citations` empty.
+  ```
+  El mensaje de usuario lleva los fragmentos como `[n] título\nURL: url\ncontenido` y luego `Question: ...`.
