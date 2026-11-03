@@ -13,10 +13,11 @@ EMBEDDING_DIM = 1536
 
 
 class FakeOpenAI:
-    def __init__(self, parsed=None, fail: bool = False) -> None:
+    def __init__(self, parsed=None, fail: bool = False, fail_chat: bool = False) -> None:
         self.calls: list[dict] = []
         self.parsed = parsed
         self.fail = fail
+        self.fail_chat = fail_chat  # falla solo en chat con un OpenAIError que NO es APIError
         self.embeddings = SimpleNamespace(create=self._create_embeddings)
         self.chat = SimpleNamespace(completions=SimpleNamespace(parse=self._parse_chat))
 
@@ -43,6 +44,8 @@ class FakeOpenAI:
 
     def _parse_chat(self, model, messages, response_format, temperature=None):
         self._raise_if_failing()
+        if self.fail_chat:
+            raise openai.OpenAIError("could not parse response content as the length limit was reached")
         self.calls.append({"model": model, "messages": messages, "temperature": temperature})
         parsed = self.parsed
         if parsed is None:  # por defecto cita la primera URL que aparezca en los mensajes

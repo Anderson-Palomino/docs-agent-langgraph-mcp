@@ -15,6 +15,9 @@ from docs_agent.ingest.embed import embed_texts
 from docs_agent.rag.answer import Citation, answer_question
 from docs_agent.rag.retrieve import corpus_size, search
 
+OPENAI_TIMEOUT_S = 30
+OPENAI_MAX_RETRIES = 2
+
 app = FastAPI(title="docs-agent")
 
 
@@ -30,7 +33,7 @@ def get_conn() -> Iterator[psycopg.Connection]:
 
 
 def get_openai() -> OpenAI:
-    return OpenAI(api_key=get_settings().openai_api_key)
+    return OpenAI(api_key=get_settings().openai_api_key, timeout=OPENAI_TIMEOUT_S, max_retries=OPENAI_MAX_RETRIES)
 
 
 class AskRequest(BaseModel):
@@ -61,6 +64,8 @@ def ask(
     client: OpenAI = Depends(get_openai),
 ) -> AskResponse:
     settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
     try:
         check_budget(conn, KIND_ASK, settings.ask_daily_token_budget)
     except BudgetExceeded:
@@ -71,7 +76,7 @@ def ask(
         vectors, embedding_tokens = embed_texts(client, [req.question], settings.embedding_model)
         chunks = search(conn, vectors[0], settings.fastapi_docs_ref, k=settings.top_k)
         result = answer_question(client, req.question, chunks, settings.chat_model)
-    except openai.APIError:
+    except openai.OpenAIError:
         raise HTTPException(status_code=502, detail="Upstream model error")
     record_usage(conn, KIND_ASK, embedding_tokens + result.prompt_tokens + result.completion_tokens)
     return AskResponse(

@@ -62,3 +62,30 @@ def test_ask_and_health_only_see_configured_docs_version(make_client, db_conn):
     body = c.post("/ask?debug=true", json={"question": "docs"}).json()
     assert [r["url"] for r in body["retrieved"]] == [new.url]
     assert c.get("/health").json()["chunks"] == 1
+
+
+def test_ask_chat_only_non_api_error_502_and_no_usage(make_client, seeded_corpus, db_conn):
+    from tests.fakes import FakeOpenAI
+
+    c = make_client(FakeOpenAI(fail_chat=True))
+    r = c.post("/ask", json={"question": "hi"})
+    assert r.status_code == 502 and r.json()["detail"] == "Upstream model error"
+    assert tokens_used_today(db_conn, KIND_ASK) == 0
+
+
+def test_ask_without_api_key_503(make_client, seeded_corpus):
+    from tests.fakes import FakeOpenAI
+
+    fake = FakeOpenAI()
+    r = make_client(fake, openai_api_key="").post("/ask", json={"question": "hi"})
+    assert r.status_code == 503 and r.json()["detail"] == "OPENAI_API_KEY not configured"
+    assert fake.calls == []
+
+
+def test_openai_client_has_timeout_and_retries(monkeypatch):
+    from docs_agent import api
+    from docs_agent.config import Settings
+
+    monkeypatch.setattr(api, "get_settings", lambda: Settings(_env_file=None, openai_api_key="sk-test"))
+    client = api.get_openai()
+    assert client.timeout == 30 and client.max_retries == 2

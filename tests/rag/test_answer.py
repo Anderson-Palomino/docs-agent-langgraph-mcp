@@ -24,3 +24,9 @@ def test_messages_contain_numbered_chunks_and_language_rule():
     joined = " ".join(m["content"] for m in msgs)
     assert "[1]" in joined and "https://fastapi.tiangolo.com/tutorial/query/" in joined
     assert "same language" in msgs[0]["content"].lower()
+
+
+def test_answer_question_uses_temperature_zero_and_given_model():
+    fake = FakeOpenAI()
+    answer_question(fake, "q", CH, model="my-model")
+    assert fake.calls[0]["model"] == "my-model" and fake.calls[0]["temperature"] == 0
