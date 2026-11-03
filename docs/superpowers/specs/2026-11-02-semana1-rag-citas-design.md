@@ -193,7 +193,7 @@ La estructura es orientativa; el builder puede ajustarla si lo justifica en deci
   host (instalador oficial, a nivel de usuario) y uv gestiona su propio Python 3.12, sin
   tocar el 3.13 del sistema. Los tests unitarios corren en el host con
   `uv run pytest`; los de integración usan el Postgres de compose expuesto en
-  `localhost:5432` y se saltan si no está disponible (marker `integration`).
+  `localhost:5432` (puerto de host final: 5434, ver D13) y se saltan si no está disponible (marker `integration`).
 - Smoke manual final: ingesta real + 5 preguntas de ejemplo.
 
 ### 7.8 docs/decisiones.md
