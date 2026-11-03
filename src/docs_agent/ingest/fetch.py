@@ -73,7 +73,7 @@ def _docs_from_tarball(data: bytes) -> list[DocFile]:
             if not member.isfile() or not member.name.endswith(".md"):
                 continue
             top, sep, rel_path = member.name.partition(_DOCS_MARKER)
-            # Solo el directorio raíz del tarball puede preceder a docs/en/docs/
+            # Solo el directorio raÃ­z del tarball puede preceder a docs/en/docs/
             if not sep or "/" in top or _is_excluded(rel_path):
                 continue
             f = tar.extractfile(member)
