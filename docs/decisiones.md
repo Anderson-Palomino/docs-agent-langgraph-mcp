@@ -146,3 +146,8 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
   includes apuntan a archivos fuera de `docs/en/docs/`, que el alcance del corpus no
   incluye; dejarlos es inocuo (son una línea de marcador) y resolverlos agranda los chunks
   con código que el texto ya describe. Se puede revisar si las evaluaciones lo piden.
+
+### D16. Troceado por `##`/`###` con tope de 800 tokens y solape de 100
+- **Elegido:** cada sección `##`/`###` (fuera de bloques de código, con fences de ``` o ```` y posible sangría) es un fragmento con su propia URL `#ancla`; la intro antes del primer `##` usa la URL de la página. Si una sección pasa de 800 tokens (cl100k_base) se parte por párrafos acumulando hasta 800, y cada sub-fragmento arranca con las últimas ~100 tokens del anterior (recortadas a límite de palabra). Un párrafo o bloque de código mayor que el tope se deja entero. Corpus real: 147 páginas -> 1088 fragmentos, mediana 129 tokens, máximo 1130 (solo 5 fragmentos > 800, todos bloques de código/párrafos indivisibles); 0 fragmentos cuyo encabezado venga de dentro de un bloque de código.
+- **Alternativas:** trocear por tamaño fijo ignorando la estructura; partir también los bloques de código; trocear solo por `##`.
+- **Por qué:** cada fragmento corresponde a una sección con ancla propia, así la cita enlaza justo a donde está la respuesta. 800 tokens cabe holgado en el embedding y en el contexto del LLM sin mezclar temas; el solape de 100 evita perder frases en el corte. Partir código lo vuelve inútil, por eso se tolera superar el tope.
