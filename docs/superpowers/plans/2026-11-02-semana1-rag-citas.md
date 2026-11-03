@@ -17,7 +17,7 @@
 - Corpus: solo `docs/en/docs/**/*.md` de `fastapi/fastapi` en el tag de `FASTAPI_DOCS_REF`. Solo datos públicos.
 - `top_k = 5`.
 - Ningún test llama a la API real de OpenAI. Los tests que necesitan Postgres llevan `@pytest.mark.integration` y se saltan (skip, no fail) si la DB no responde.
-- Postgres se expone en el host en **`localhost:5433`** (evita chocar con un Postgres local en 5432). Dentro de compose: `db:5432`.
+- Postgres se expone en el host en **`localhost:5434`** (evita chocar con Postgres locales en 5432 y 5433). Dentro de compose: `db:5432`.
 - Secretos solo en `.env` (en `.gitignore`); `.env.example` sin valores reales.
 - Identidad git ya configurada en el repo. Cada commit termina con `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Commits pequeños, mensajes en inglés estilo conventional commits.
 - Cada decisión técnica no trivial que tome el implementador → nueva entrada en `docs/decisiones.md` (formato: Elegido · Alternativas · Por qué), numerada a continuación de D12.
@@ -41,7 +41,7 @@
 **Interfaces:**
 - Produces:
   - `docs_agent.config.Settings(BaseSettings)` con campos (env var en mayúsculas, lee `.env`):
-    `openai_api_key: str = ""`, `database_url: str = "postgresql://docs:docs@localhost:5433/docs"`,
+    `openai_api_key: str = ""`, `database_url: str = "postgresql://docs:docs@localhost:5434/docs"`,
     `chat_model: str = "gpt-4.1-mini"`, `embedding_model: str = "text-embedding-3-small"`,
     `fastapi_docs_ref: str` (default = último tag estable de fastapi/fastapi al construir; resuélvelo con `gh api repos/fastapi/fastapi/releases/latest --jq .tag_name`),
     `top_k: int = 5`, `chunk_max_tokens: int = 800`, `chunk_overlap_tokens: int = 100`,
@@ -60,7 +60,7 @@ def test_defaults(monkeypatch):
     assert s.top_k == 5
     assert s.chat_model == "gpt-4.1-mini"
     assert s.embedding_model == "text-embedding-3-small"
-    assert "localhost:5433" in s.database_url
+    assert "localhost:5434" in s.database_url
 
 def test_env_override(monkeypatch):
     monkeypatch.setenv("ASK_DAILY_TOKEN_BUDGET", "123")
@@ -70,7 +70,7 @@ def test_env_override(monkeypatch):
 - [ ] **Step 4:** `uv run pytest tests/test_config.py -q` → FAIL (ImportError).
 - [ ] **Step 5:** Implementar `config.py` y `conftest.py`. `.env.example` lista todas las variables con valores de ejemplo y `OPENAI_API_KEY=sk-...`.
 - [ ] **Step 6:** `uv run pytest -q` → PASS.
-- [ ] **Step 7:** Añadir D13 en `docs/decisiones.md`: tag de FastAPI elegido y por qué; puerto 5433. Commit `chore: scaffold project with uv and settings`.
+- [ ] **Step 7:** Añadir D13 en `docs/decisiones.md`: tag de FastAPI elegido y por qué; puerto 5434. Commit `chore: scaffold project with uv and settings`.
 
 ---
 
@@ -88,7 +88,7 @@ def test_env_override(monkeypatch):
   - `tests/conftest.py`: fixture `db_conn` — `connect()`; si falla, `pytest.skip("Postgres not available")`; antes y después del test hace `TRUNCATE chunks, token_usage` + commit; cierra al final.
 
 - [ ] **Step 1:** Comprobar que Docker Desktop corre (`docker info`). Si no, pedir a Anderson que lo abra y esperar.
-- [ ] **Step 2:** `docker-compose.yml`: servicio `db` con imagen `pgvector/pgvector:pg17`, env `POSTGRES_USER/PASSWORD/DB=docs`, puerto `5433:5432`, volumen nombrado `pgdata`, `./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro`, healthcheck `pg_isready -U docs`.
+- [ ] **Step 2:** `docker-compose.yml`: servicio `db` con imagen `pgvector/pgvector:pg17`, env `POSTGRES_USER/PASSWORD/DB=docs`, puerto `5434:5432`, volumen nombrado `pgdata`, `./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro`, healthcheck `pg_isready -U docs`.
 - [ ] **Step 3: Test que falla** — `tests/test_db.py` (`@pytest.mark.integration`):
 
 ```python

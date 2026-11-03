@@ -8,7 +8,7 @@ Soy desarrollador Full Stack (Python/FastAPI, React/TypeScript, PostgreSQL, AWS,
 ## Reglas para Claude Code
 - Trabaja una semana a la vez con el flujo completo de superpowers, sin saltar fases: brainstorming → plan → ejecución → code review → cerrar la rama. Puedes usar subagentes en la ejecución.
 - Después voy a estudiar el código para explicarlo en entrevistas. En cada decisión técnica importante, anota en docs/decisiones.md qué se eligió, qué alternativas había y por qué.
-- Solo datos públicos. Nada de BaldeCash, GENIA ni clientes.
+- Solo datos públicos. Nada de datos de empleadores ni clientes.
 - Commits pequeños con mensajes claros. Tests con pytest en cada paso.
 - Pon un límite de gasto de tokens configurable por variable de entorno.
 

@@ -43,7 +43,7 @@ por qué).
 ## 4. Anti-metas (sería un fracaso aunque funcione)
 
 - Citas inventadas: una URL en `citations` que no venga de los fragmentos recuperados.
-- Usar cualquier dato que no sea público (nada de BaldeCash, GENIA ni clientes).
+- Usar cualquier dato que no sea público (nada de datos de empleadores ni clientes).
 - Que un revisor no pueda levantarlo con `docker compose up` + ingesta siguiendo el README.
 - Código "mágico" que Anderson no pueda explicar línea a línea (p. ej. un
   `RetrievalQA` de LangChain que oculte el prompt y la consulta).
@@ -82,8 +82,8 @@ por qué).
   en el chat). Claude corre la ingesta real y el smoke test con las 5 preguntas, y pega
   las salidas reales en el README. Costo esperado: menos de 1 USD.
 - **Identidad git (solo en este repo):** `Anderson-Palomino`
-  `<170631001+Anderson-Palomino@users.noreply.github.com>`. No se usa el correo de
-  BaldeCash.
+  `<170631001+Anderson-Palomino@users.noreply.github.com>`. No se usa el correo del
+  trabajo.
 - **Trailer:** los commits llevan `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## 7. Diseño
@@ -193,7 +193,7 @@ La estructura es orientativa; el builder puede ajustarla si lo justifica en deci
   host (instalador oficial, a nivel de usuario) y uv gestiona su propio Python 3.12, sin
   tocar el 3.13 del sistema. Los tests unitarios corren en el host con
   `uv run pytest`; los de integración usan el Postgres de compose expuesto en
-  `localhost:5432` y se saltan si no está disponible (marker `integration`).
+  `localhost:5432` (puerto de host final: 5434, ver D13) y se saltan si no está disponible (marker `integration`).
 - Smoke manual final: ingesta real + 5 preguntas de ejemplo.
 
 ### 7.8 docs/decisiones.md
