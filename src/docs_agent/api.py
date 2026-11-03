@@ -65,11 +65,11 @@ def ask(
         check_budget(conn, KIND_ASK, settings.ask_daily_token_budget)
     except BudgetExceeded:
         raise HTTPException(status_code=429, detail="Daily token budget exhausted")
-    if corpus_size(conn) == 0:
+    if corpus_size(conn, settings.fastapi_docs_ref) == 0:
         raise HTTPException(status_code=503, detail="Corpus is empty: run the ingest command first")
     try:
         vectors, embedding_tokens = embed_texts(client, [req.question], settings.embedding_model)
-        chunks = search(conn, vectors[0], k=settings.top_k)
+        chunks = search(conn, vectors[0], settings.fastapi_docs_ref, k=settings.top_k)
         result = answer_question(client, req.question, chunks, settings.chat_model)
     except openai.APIError:
         raise HTTPException(status_code=502, detail="Upstream model error")
@@ -92,6 +92,6 @@ def ask(
 @app.get("/health")
 def health(conn: psycopg.Connection = Depends(get_conn)) -> dict:
     try:
-        return {"status": "ok", "chunks": corpus_size(conn)}
+        return {"status": "ok", "chunks": corpus_size(conn, get_settings().fastapi_docs_ref)}
     except psycopg.Error:
         raise HTTPException(status_code=503, detail="Database unavailable")

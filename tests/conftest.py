@@ -47,29 +47,45 @@ def seeded_corpus(db_conn):
     replace_corpus(db_conn, "test-ref", chunks, [FakeOpenAI.vector_for(c.content) for c in chunks])
 
 
-def _make_client(db_conn, fake):
+def _make_client(db_conn, fake, monkeypatch, **settings_overrides):
     from fastapi.testclient import TestClient
 
+    from docs_agent import api
     from docs_agent.api import app, get_conn, get_openai
+    from docs_agent.config import Settings
 
+    overrides = {"openai_api_key": "sk-test", "fastapi_docs_ref": "test-ref", **settings_overrides}
+    settings = Settings(_env_file=None, **overrides)
+    monkeypatch.setattr(api, "get_settings", lambda: settings)
     app.dependency_overrides[get_conn] = lambda: db_conn
     app.dependency_overrides[get_openai] = lambda: fake
     return TestClient(app)
 
 
 @pytest.fixture
-def client(db_conn):
+def client(db_conn, monkeypatch):
     from docs_agent.api import app
     from tests.fakes import FakeOpenAI
 
-    yield _make_client(db_conn, FakeOpenAI())
+    yield _make_client(db_conn, FakeOpenAI(), monkeypatch)
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def client_with_failing_openai(db_conn):
+def client_with_failing_openai(db_conn, monkeypatch):
     from docs_agent.api import app
     from tests.fakes import FakeOpenAI
 
-    yield _make_client(db_conn, FakeOpenAI(fail=True))
+    yield _make_client(db_conn, FakeOpenAI(fail=True), monkeypatch)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def make_client(db_conn, monkeypatch):
+    from docs_agent.api import app
+
+    def make(fake, **settings_overrides):
+        return _make_client(db_conn, fake, monkeypatch, **settings_overrides)
+
+    yield make
     app.dependency_overrides.clear()

@@ -15,16 +15,16 @@ class RetrievedChunk:
     distance: float
 
 
-def search(conn: psycopg.Connection, query_embedding: list[float], k: int = 5) -> list[RetrievedChunk]:
-    """Devuelve los k fragmentos más cercanos (distancia coseno `<=>`, menor = más similar)."""
+def search(conn: psycopg.Connection, query_embedding: list[float], source_ref: str, k: int = 5) -> list[RetrievedChunk]:
+    """Devuelve los k fragmentos más cercanos de `source_ref` (distancia coseno `<=>`, menor = más similar)."""
     vec = Vector(query_embedding)
     rows = conn.execute(
         "SELECT id, url, title, content, embedding <=> %s AS distance"
-        " FROM chunks ORDER BY embedding <=> %s LIMIT %s",
-        (vec, vec, k),
+        " FROM chunks WHERE source_ref = %s ORDER BY embedding <=> %s LIMIT %s",
+        (vec, source_ref, vec, k),
     ).fetchall()
     return [RetrievedChunk(*row) for row in rows]
 
 
-def corpus_size(conn: psycopg.Connection) -> int:
-    return conn.execute("SELECT count(*) FROM chunks").fetchone()[0]
+def corpus_size(conn: psycopg.Connection, source_ref: str) -> int:
+    return conn.execute("SELECT count(*) FROM chunks WHERE source_ref = %s", (source_ref,)).fetchone()[0]

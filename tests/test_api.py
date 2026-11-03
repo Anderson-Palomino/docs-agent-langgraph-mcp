@@ -47,3 +47,18 @@ def test_debug_includes_retrieved(client, seeded_corpus):
 
 def test_health(client):
     assert client.get("/health").json()["status"] == "ok"
+
+
+def test_ask_and_health_only_see_configured_docs_version(make_client, db_conn):
+    from docs_agent.ingest.chunk import Chunk
+    from docs_agent.ingest.store import replace_corpus
+    from tests.fakes import FakeOpenAI
+
+    old = Chunk("https://fastapi.tiangolo.com/old/", "Old", "old docs version", 3)
+    new = Chunk("https://fastapi.tiangolo.com/new/", "New", "new docs version", 3)
+    replace_corpus(db_conn, "old-ref", [old], [FakeOpenAI.vector_for(old.content)])
+    replace_corpus(db_conn, "test-ref", [new], [FakeOpenAI.vector_for(new.content)])
+    c = make_client(FakeOpenAI())
+    body = c.post("/ask?debug=true", json={"question": "docs"}).json()
+    assert [r["url"] for r in body["retrieved"]] == [new.url]
+    assert c.get("/health").json()["chunks"] == 1
