@@ -13,11 +13,13 @@ def settings_factory():
 
 @pytest.fixture
 def db_conn():
+    import psycopg
+
     from docs_agent.db import connect
 
     try:
         conn = connect()
-    except Exception:
+    except psycopg.OperationalError:
         pytest.skip("Postgres not available")
     try:
         conn.execute("TRUNCATE chunks, token_usage")

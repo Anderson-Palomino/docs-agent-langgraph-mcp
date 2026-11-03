@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     openai_api_key: str = ""
-    database_url: str = "postgresql://docs:docs@localhost:5433/docs"
+    database_url: str = "postgresql://docs:docs@localhost:5434/docs"
     chat_model: str = "gpt-4.1-mini"
     embedding_model: str = "text-embedding-3-small"
     fastapi_docs_ref: str = "0.162.0"

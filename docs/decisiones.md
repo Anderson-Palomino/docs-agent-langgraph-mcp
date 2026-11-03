@@ -89,7 +89,7 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
 ### D11. `uv` en el host, tests unitarios locales, integración contra el Postgres de compose
 - **Elegido:** instalar `uv` a nivel de usuario; uv gestiona Python 3.12. `uv run pytest`
   en el host, y los tests de integración (marker `integration`) usan
-  `localhost:5433` (puerto del host del servicio `db` de compose).
+  `localhost:5434` (puerto del host del servicio `db` de compose; ver D13).
 - **Alternativas:** correr todo dentro de contenedores; usar el Python 3.13 del sistema.
 - **Por qué:** el ciclo de los tests es mucho más rápido en el host, y uv aísla la
   versión de Python sin tocar la del sistema. La imagen de Docker usa la misma 3.12 y el
@@ -105,13 +105,24 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
   spec → plan → implementación con Claude Code, que es parte de la historia que voy a
   contar en entrevistas.
 
-### D13. Corpus fijado al tag 0.162.0 de FastAPI y Postgres en el puerto 5433
+### D13. Corpus fijado al tag 0.162.0 de FastAPI y Postgres en el puerto 5434
 - **Elegido:** `FASTAPI_DOCS_REF` por defecto = `0.162.0`, el último release estable de
   `fastapi/fastapi` al construir (resuelto con `gh api repos/fastapi/fastapi/releases/latest`).
-  El Postgres de compose se expone en el host como `localhost:5433` (dentro de compose
+  El Postgres de compose se expone en el host como `localhost:5434` (dentro de compose
   sigue siendo `db:5432`).
 - **Alternativas:** seguir `master`/`latest` en cada ingesta; usar el puerto estándar 5432.
 - **Por qué:** un tag fijo hace la ingesta reproducible: el mismo corpus produce los mismos
   chunks y las citas no cambian entre ejecuciones. Se actualiza a propósito, no por
-  accidente. El 5433 evita chocar con un Postgres local ya instalado en el 5432, que es lo
-  habitual en una máquina de desarrollo.
+  accidente. El 5434 evita chocar con un Postgres local ya instalado en el 5432 y con el
+  Postgres de otro proyecto local (genia-geo) que ya ocupa el 5433.
+
+### D14. `connect_timeout=5` en la conexión y `init.sql` solo en volumen nuevo
+- **Elegido:** `db.connect()` pasa `connect_timeout=5` a psycopg. Los tests de integración
+  capturan `psycopg.OperationalError` y hacen skip. `db/init.sql` solo se ejecuta cuando el
+  volumen `pgdata` es nuevo; si el esquema cambia hay que correr `docker compose down -v`.
+- **Alternativas:** sin timeout (el default de psycopg); hacer skip ante cualquier `Exception`.
+- **Por qué:** en Windows/Docker un host:puerto inalcanzable no rechaza la conexión, la deja
+  expirar, así que sin timeout los tests de integración se cuelgan más de 100 s en vez de
+  hacer skip. Capturar solo `OperationalError` deja que los bugs de configuración fallen con
+  ruido. El entrypoint de Postgres ignora `docker-entrypoint-initdb.d` si ya hay datos, por
+  eso un cambio de esquema exige recrear el volumen (ver D5).
