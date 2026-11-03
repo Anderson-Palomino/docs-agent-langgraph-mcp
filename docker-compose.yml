@@ -16,5 +16,16 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://docs:docs@db:5432/docs
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
