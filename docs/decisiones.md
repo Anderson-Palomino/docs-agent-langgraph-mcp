@@ -126,3 +126,23 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
   hacer skip. Capturar solo `OperationalError` deja que los bugs de configuración fallen con
   ruido. El entrypoint de Postgres ignora `docker-entrypoint-initdb.d` si ya hay datos, por
   eso un cambio de esquema exige recrear el volumen (ver D5).
+
+### D15. Corpus = 147 páginas del tag, ancla por `{ #id }` con slug MkDocs de respaldo
+- **Elegido:** el tarball de GitHub (`codeload`, cacheado en `data/`) trae 156 `.md` en
+  `docs/en/docs/`; se excluyen 9 (`release-notes`, `management`, `fastapi-people`,
+  `contributing`, `external-links`, `newsletter`, `help-fastapi`, `translation-banner` y
+  `_llm-test`, una página interna para probar traducciones) y quedan **147**. El ancla de
+  cada heading sale del `{ #id }` explícito (attr_list) cuando existe (995 de 1010 headings
+  `##`+ en el tag); si no, se aplica el slug de MkDocs `toc` (15 headings, casi todos en
+  `reference/`). Ambas rutas se verificaron contra el HTML real: `#request-body`,
+  `#import-pydantics-basemodel`, `#depends` y `#api-key-security-schemes` existen en
+  fastapi.tiangolo.com. Los includes `{* ../../docs_src/... *}` (453 líneas en el corpus) se
+  dejan tal cual en el texto.
+- **Alternativas:** raspar el sitio publicado; resolver los includes inlineando el código de
+  `docs_src/`; usar siempre el slug sin mirar `{ #id }`.
+- **Por qué:** el tarball de un tag fijo es reproducible y no depende del HTML del sitio.
+  Usar el id explícito es obligatorio porque los slugs generados divergen del id (p. ej. en
+  traducciones o ids personalizados) y una cita con ancla rota pierde credibilidad. Los
+  includes apuntan a archivos fuera de `docs/en/docs/`, que el alcance del corpus no
+  incluye; dejarlos es inocuo (son una línea de marcador) y resolverlos agranda los chunks
+  con código que el texto ya describe. Se puede revisar si las evaluaciones lo piden.
