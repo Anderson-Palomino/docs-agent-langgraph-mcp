@@ -55,7 +55,7 @@ No test calls OpenAI. Integration tests need the compose db and are skipped if i
 
 ## Example questions
 
-Real outputs from `POST /ask` (corpus: FastAPI 0.162.0, 1088 chunks; answers trimmed to the first paragraph, `usage` omitted). Every cited URL returned HTTP 200 and the cited sections cover the topic.
+Real outputs from `POST /ask` (corpus: FastAPI 0.162.0, 1088 chunks; answers trimmed to the first paragraph(s), `usage` omitted). Every cited URL returned HTTP 200 and the cited sections cover the topic.
 
 **1. How do I declare a request body with Pydantic?**
 
@@ -74,6 +74,10 @@ Real outputs from `POST /ask` (corpus: FastAPI 0.162.0, 1088 chunks; answers tri
 **3. How do I return a custom status code from a path operation?**
 
 > To return a custom status code from a path operation in FastAPI, you have a few options:
+>
+> 1. You can define the `status_code` parameter directly in your path operation decorator, passing either the integer code (e.g., `404`) or using the shortcut constants from `fastapi.status` or `starlette.status`.
+>
+> 2. If you need to return a different status code dynamically (not fixed in the decorator), you can declare a parameter of type `Response` in your path operation function. [...]
 
 `grounded: true`, citations:
   - [Path Operation Configuration > Response Status Code](https://fastapi.tiangolo.com/tutorial/path-operation-configuration/#response-status-code)
@@ -82,6 +86,9 @@ Real outputs from `POST /ask` (corpus: FastAPI 0.162.0, 1088 chunks; answers tri
 **4. ¿Cómo agrego CORS a mi aplicación FastAPI?**
 
 > Para agregar CORS a tu aplicación FastAPI, debes usar el middleware `CORSMiddleware`. Los pasos son:
+>
+> 1. Importar `CORSMiddleware`.
+> 2. Crear una lista de orígenes permitidos (como cadenas de texto). [...]
 
 `grounded: true`, citations:
   - [CORS (Cross-Origin Resource Sharing) > Use `CORSMiddleware`](https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware)
