@@ -114,7 +114,7 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
 - **Por qué:** un tag fijo hace la ingesta reproducible: el mismo corpus produce los mismos
   chunks y las citas no cambian entre ejecuciones. Se actualiza a propósito, no por
   accidente. El 5434 evita chocar con un Postgres local ya instalado en el 5432 y con el
-  Postgres de otro proyecto local (genia-geo) que ya ocupa el 5433.
+  Postgres de otro proyecto local que ya ocupa el 5433.
 
 ### D14. `connect_timeout=5` en la conexión y `init.sql` solo en volumen nuevo
 - **Elegido:** `db.connect()` pasa `connect_timeout=5` a psycopg. Los tests de integración
