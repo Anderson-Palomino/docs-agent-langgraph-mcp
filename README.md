@@ -35,7 +35,7 @@ Environment variables (or `.env`):
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | - | Required for ingest and `/ask` |
-| `DATABASE_URL` | `postgresql://docs:docs@localhost:5434/docs` | Overridden to `db:5432` inside compose |
+| `DATABASE_URL` | `postgresql://docs:docs@127.0.0.1:5434/docs` | Overridden to `db:5432` inside compose |
 | `CHAT_MODEL` | `gpt-4.1-mini` | Answer model |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
 | `FASTAPI_DOCS_REF` | `0.162.0` | FastAPI tag to ingest |

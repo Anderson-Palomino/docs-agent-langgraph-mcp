@@ -126,6 +126,9 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
   hacer skip. Capturar solo `OperationalError` deja que los bugs de configuración fallen con
   ruido. El entrypoint de Postgres ignora `docker-entrypoint-initdb.d` si ya hay datos, por
   eso un cambio de esquema exige recrear el volumen (ver D5).
+  Gotcha IPv6: con el puerto publicado solo en `127.0.0.1`, `localhost` resuelve primero a `::1`
+  y cada conexión espera el `connect_timeout` completo (5 s) antes de caer a IPv4 (la suite pasó de
+  5 s a 145 s); por eso la URL del host usa `127.0.0.1` y no `localhost`.
 
 ### D15. Corpus = 147 páginas del tag, ancla por `{ #id }` con slug MkDocs de respaldo
 - **Elegido:** el tarball de GitHub (`codeload`, cacheado en `data/`) trae 156 `.md` en

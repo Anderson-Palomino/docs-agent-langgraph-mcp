@@ -7,7 +7,7 @@ def test_defaults(monkeypatch):
     assert s.top_k == 5
     assert s.chat_model == "gpt-4.1-mini"
     assert s.embedding_model == "text-embedding-3-small"
-    assert "localhost:5434" in s.database_url
+    assert "127.0.0.1:5434" in s.database_url
 
 
 def test_env_override(monkeypatch):

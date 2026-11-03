@@ -1,6 +1,20 @@
+import os
+
 import pytest
 
 from docs_agent.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def _host_database_url(monkeypatch):
+    """Tests ignore DATABASE_URL from .env: use the code default unless explicitly exported."""
+    from docs_agent.config import get_settings
+
+    if "DATABASE_URL" not in os.environ:
+        monkeypatch.setenv("DATABASE_URL", Settings(_env_file=None).database_url)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture
