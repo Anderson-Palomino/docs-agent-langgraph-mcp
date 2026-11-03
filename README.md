@@ -55,7 +55,50 @@ No test calls OpenAI. Integration tests need the compose db and are skipped if i
 
 ## Example questions
 
-<!-- EXAMPLES -->
+Real outputs from `POST /ask` (corpus: FastAPI 0.162.0, 1088 chunks; answers trimmed to the first paragraph, `usage` omitted). Every cited URL returned HTTP 200 and the cited sections cover the topic.
+
+**1. How do I declare a request body with Pydantic?**
+
+> To declare a request body with Pydantic in FastAPI, you define a Pydantic model with the fields you expect in the request body. Then, you use this model as a parameter type in your path operation function. FastAPI will automatically recognize that this parameter should be taken from the request body and will validate and parse the incoming data accordingly.
+
+`grounded: true`, citations:
+  - [Request Body](https://fastapi.tiangolo.com/tutorial/body/)
+
+**2. How can I run code before the application starts and after it shuts down?**
+
+> You can run code before the application starts by defining logic that executes once before the application starts receiving requests. Similarly, you can run code after the application shuts down by defining logic that executes once after the application has finished handling requests. This is done using lifespan events in FastAPI, which cover the whole application lifespan. This approach is useful for setting up [...]
+
+`grounded: true`, citations:
+  - [Lifespan Events](https://fastapi.tiangolo.com/advanced/events/)
+
+**3. How do I return a custom status code from a path operation?**
+
+> To return a custom status code from a path operation in FastAPI, you have a few options:
+
+`grounded: true`, citations:
+  - [Path Operation Configuration > Response Status Code](https://fastapi.tiangolo.com/tutorial/path-operation-configuration/#response-status-code)
+  - [Response - Change Status Code > Use a `Response` parameter](https://fastapi.tiangolo.com/advanced/response-change-status-code/#use-a-response-parameter)
+
+**4. ¿Cómo agrego CORS a mi aplicación FastAPI?**
+
+> Para agregar CORS a tu aplicación FastAPI, debes usar el middleware `CORSMiddleware`. Los pasos son:
+
+`grounded: true`, citations:
+  - [CORS (Cross-Origin Resource Sharing) > Use `CORSMiddleware`](https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware)
+  - [CORS (Cross-Origin Resource Sharing) > More info](https://fastapi.tiangolo.com/tutorial/cors/#more-info)
+
+**5. How do dependencies with yield work?**
+
+> Dependencies with `yield` in FastAPI allow you to run extra steps after finishing the main part of the dependency, often called "exit code" or "cleanup code". You write the main code up to the `yield` statement, which provides the value injected into path operations or other dependencies. The code after the `yield` is executed after the response is sent, allowing for cleanup actions like closing a database session.
+
+`grounded: true`, citations:
+  - [Dependencies with yield](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/)
+  - [Dependencies with yield > Sub-dependencies with `yield`](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#sub-dependencies-with-yield)
+  - [Dependencies with yield > Execution of dependencies with `yield`](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#execution-of-dependencies-with-yield)
+  - [Dependencies with yield > A database dependency with `yield`](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#a-database-dependency-with-yield)
+  - [Advanced Dependencies > Dependencies with `yield` and `scope`](https://fastapi.tiangolo.com/advanced/advanced-dependencies/#dependencies-with-yield-and-scope)
+
+Known weakness: answers are sometimes generic (question 2 explains the idea of lifespan events without showing the code), because the model is told to use only the retrieved fragments. Retrieval quality will be measured with evaluations in a later week.
 
 ## Design decisions
 
