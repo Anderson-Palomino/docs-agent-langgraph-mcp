@@ -1,0 +1,535 @@
+{
+  "id": "aLDXKzYprdKMpnT7",
+  "name": "01-ask-log",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ask",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -640,
+        64
+      ],
+      "webhookId": "0b6f2a52-6a35-4f0e-9a51-a5c000000001",
+      "id": "a7b1f796-b716-4a97-9f32-55ffb9fbb7eb"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.body.question }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "¿Tiene pregunta?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -432,
+        64
+      ],
+      "id": "22efe4d3-1da6-40c4-8a79-1f7a1e9e1aff"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Falta question: envía {\"question\": \"...\"}' }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "name": "Responder 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -208,
+        240
+      ],
+      "id": "0049a0a9-d47a-4bb7-b5c1-1a716a2fafff"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/ask",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: $json.body.question }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Llamar /ask",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -208,
+        -48
+      ],
+      "id": "81a8016c-10d3-4d85-afb5-5c27446cb51f",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "¿/ask respondió 200?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        16,
+        -48
+      ],
+      "id": "1e2cfbc0-b72c-4db8-b628-179d8a549d70"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.body.grounded }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "¿Tiene respaldo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        -144
+      ],
+      "id": "bbf88958-edcf-44fd-a9dd-9ca71dd792e8"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "question",
+              "value": "={{ $('Webhook').item.json.body.question }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "answer",
+              "value": "={{ $json.body.answer }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "grounded",
+              "value": "={{ $json.body.grounded }}",
+              "type": "boolean"
+            },
+            {
+              "id": "a4",
+              "name": "citations",
+              "value": "={{ JSON.stringify($json.body.citations) }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "embedding_tokens",
+              "value": "={{ $json.body.usage.embedding_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "a6",
+              "name": "prompt_tokens",
+              "value": "={{ $json.body.usage.prompt_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "a7",
+              "name": "completion_tokens",
+              "value": "={{ $json.body.usage.completion_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "a8",
+              "name": "total_tokens",
+              "value": "={{ $json.body.usage.embedding_tokens + $json.body.usage.prompt_tokens + $json.body.usage.completion_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "a9",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Con respaldo",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        -240
+      ],
+      "id": "8a4f1633-18d9-4b76-8089-d124a3723327"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "question",
+              "value": "={{ $('Webhook').item.json.body.question }}",
+              "type": "string"
+            },
+            {
+              "id": "b2",
+              "name": "answer",
+              "value": "No encontré esto en la documentación",
+              "type": "string"
+            },
+            {
+              "id": "b3",
+              "name": "grounded",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "b4",
+              "name": "citations",
+              "value": "[]",
+              "type": "string"
+            },
+            {
+              "id": "b5",
+              "name": "embedding_tokens",
+              "value": "={{ $json.body.usage.embedding_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "b6",
+              "name": "prompt_tokens",
+              "value": "={{ $json.body.usage.prompt_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "b7",
+              "name": "completion_tokens",
+              "value": "={{ $json.body.usage.completion_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "b8",
+              "name": "total_tokens",
+              "value": "={{ $json.body.usage.embedding_tokens + $json.body.usage.prompt_tokens + $json.body.usage.completion_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "b9",
+              "name": "http_status",
+              "value": "={{ $json.statusCode }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Sin respaldo",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        -48
+      ],
+      "id": "28ddd383-19b1-46fc-b98e-2b1683f8e329"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "question",
+              "value": "={{ $('Webhook').item.json.body.question }}",
+              "type": "string"
+            },
+            {
+              "id": "e2",
+              "name": "http_status",
+              "value": "={{ $json.statusCode ?? 502 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Error de /ask",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        160
+      ],
+      "id": "e7dba04f-3753-4cbd-902c-28f2aa3c19c9"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "n8n_question_log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Guardar en log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        704,
+        -48
+      ],
+      "id": "9a13bc81-439d-4653-b2c8-03e8258b29b3",
+      "credentials": {
+        "postgres": {
+          "id": "Rm1h0j4nohjBY3yS",
+          "name": "docs-agent Postgres (dev)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.http_status === 200 ? { answer: $json.answer, citations: $json.citations, grounded: $json.grounded } : { error: $('Llamar /ask').item.json.body?.detail ?? 'docs-agent no respondió (caído o timeout)' }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status }}"
+        }
+      },
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        928,
+        -48
+      ],
+      "id": "62dc65a4-93b4-4ab3-aaf3-8d7bfcbf83f1"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene pregunta?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene pregunta?": {
+      "main": [
+        [
+          {
+            "node": "Llamar /ask",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Llamar /ask": {
+      "main": [
+        [
+          {
+            "node": "¿/ask respondió 200?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error de /ask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿/ask respondió 200?": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene respaldo?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error de /ask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene respaldo?": {
+      "main": [
+        [
+          {
+            "node": "Con respaldo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sin respaldo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Con respaldo": {
+      "main": [
+        [
+          {
+            "node": "Guardar en log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sin respaldo": {
+      "main": [
+        [
+          {
+            "node": "Guardar en log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error de /ask": {
+      "main": [
+        [
+          {
+            "node": "Guardar en log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar en log": {
+      "main": [
+        [
+          {
+            "node": "Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
