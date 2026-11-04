@@ -1,0 +1,23 @@
+# n8n self-hosted junto a docs-agent.
+# Requisito: el compose de docs-agent (raíz del repo) debe estar arriba,
+# porque aquí usamos su red como red externa para llamar a api:8000 y db:5432.
+services:
+  n8n:
+    image: n8nio/n8n:2.46.4          # versión fijada: los nodos se verifican contra esta
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:5678:5678"        # solo loopback: nada expuesto a la LAN
+    volumes:
+      - n8n_data:/home/node/.n8n     # workflows, credenciales cifradas y SQLite de n8n
+    networks:
+      - default
+      - docs_agent
+
+volumes:
+  n8n_data:
+
+networks:
+  docs_agent:
+    external: true
+    name: docs-agent-langgraph-mcp_default
