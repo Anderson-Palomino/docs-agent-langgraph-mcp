@@ -76,3 +76,33 @@ Decisiones del ejercicio (formato: Elegido / Alternativas / Por qué) y lo que f
 - **Por qué:** MCP sirve para que *cualquier* cliente (Claude Code, Claude Desktop, Copilot…) use herramientas internas sin integrarlas una por una. Si el cliente ya es un agente, poner otro agente detrás solo duplica decisiones. Con **None**, cualquiera que llegue al puerto puede usar la herramienta (y gastar tokens de OpenAI). OAuth2 conviene cuando cada usuario debe entrar con su propia cuenta de n8n.
 - **Dónde vive el token:** en `integrations/n8n/.env` (ignorado), en la credencial de n8n y en la config **local** de Claude Code (`~/.claude.json`, registrado con `claude mcp add --scope local`). Nunca en el repo: lo comprueba un `grep` del valor exacto antes de commitear.
 - **Aprendido:** en el nodo v2 la URL es `/mcp/<path>` (producción) o `/mcp-test/<path>` (prueba) y el transporte es HTTP con *streaming*, sin las rutas `/sse` del v1. El servidor responde a `initialize`, `tools/list` y `tools/call` como cualquier servidor MCP (`smoke_mcp.py` lo prueba "a mano", sin SDK).
+
+## N11. Key de OpenAI propia para n8n, con permisos mínimos
+
+- **Elegido:** una key nueva (`n8n-ejercicio`) en el mismo proyecto de OpenAI, **Restricted** con solo dos permisos: **List models: Read** y **Chat completions: Write**. Caduca en 7 días. Va directo a la credencial de n8n con `import-openai-credential.ps1`, que la lee del portapapeles, la pasa por stdin al contenedor (n8n la cifra al importar) y vacía el portapapeles.
+- **Alternativas:** reutilizar la key de docs-agent; darle permisos "All".
+- **Por qué:** con keys separadas, el consumo de cada servicio se ve por separado en el panel de OpenAI, y se puede revocar una sin romper la otra. Los permisos mínimos limitan el daño si la key se filtra. El tope mensual del proyecto sigue cubriendo ambas.
+- **Por qué esos dos permisos:** el nodo OpenAI Chat Model carga la lista de modelos con `GET /v1/models` (sin ese permiso, el desplegable falla) y luego llama a `/v1/chat/completions`.
+- **Ojo (la doc y el código no coinciden):** docs.n8n.io dice que *Use Responses API* viene apagado, pero en el nodo **v1.3** de n8n 2.46.4 el valor por defecto es **`true`** (lo vi en el código del nodo). Con esta key, que no tiene `/v1/responses`, habría fallado. Quedó en `false` explícito en el workflow. Lección: verificar contra la versión instalada, no solo contra la doc.
+
+## N12. Workflow fijo vs. agente: lo que se vio en este ejercicio
+
+- **`01-ask-log` (workflow fijo):** el camino lo deciden los IF. Siempre se llama a `/ask` una vez. Es predecible, barato y fácil de auditar; sirve cuando el proceso se conoce de antemano.
+- **`03-agente-docs` (AI Agent):** el **modelo** decide si usa la herramienta. Medido en el chat de n8n:
+  - pregunta de FastAPI: modelo → `ask_docs_agent` → modelo (2 llamadas al LLM + 1 a la herramienta), **646 tokens** de n8n, más los de docs-agent;
+  - "hola": 1 llamada al LLM y ninguna herramienta, **217 tokens**.
+- **Costo de la flexibilidad:** cada respuesta con herramienta paga el LLM dos veces, más el RAG de docs-agent por dentro. Y el comportamiento depende del prompt de sistema y de la **descripción de la herramienta**, que el modelo lee para decidir.
+- **Sin memoria:** el agente no tiene nodo Memory, así que cada mensaje es independiente. Para una conversación de varios turnos se agrega *Simple Memory* (o Postgres Chat Memory en producción).
+- **Control de consumo de un agente en producción:** límite de iteraciones del agente, modelo chico por defecto, tope de tokens por día (como el `ASK_DAILY_TOKEN_BUDGET` de docs-agent o el extra de "cortar si pasa N" sobre `n8n_question_log`), keys separadas con presupuesto propio, y registrar los tokens de cada ejecución.
+
+### Prompt de sistema del agente
+
+```
+Eres un asistente técnico de FastAPI. Respondes en español, breve y concreto.
+- Para cualquier pregunta sobre FastAPI, usa SIEMPRE la herramienta ask_docs_agent; no respondas de memoria.
+- Cita las URLs que devuelva la herramienta, tal cual.
+- Si la herramienta devuelve grounded: false, di que la documentación no cubre eso; no inventes.
+- Saludos o charla general: responde tú, sin usar la herramienta.
+```
+
+Cada línea tiene un fin: "SIEMPRE … no respondas de memoria" evita que el modelo conteste con lo que sabe de entrenamiento, sin citas; "tal cual" evita URLs inventadas; la regla de `grounded: false` traslada al agente la señal anti-alucinación de docs-agent; y la última línea evita gastar una llamada a la herramienta en un saludo.
