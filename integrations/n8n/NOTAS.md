@@ -36,3 +36,28 @@ Decisiones del ejercicio (formato: Elegido / Alternativas / Por qué) y lo que f
 - **Alternativas:** agregar la tabla a `db/init.sql` de docs-agent, o crearla desde n8n con un nodo Postgres de "ejecutar query".
 - **Por qué:** `db/init.sql` solo corre cuando el volumen de Postgres es nuevo, así que en una base existente no haría nada, y además mezclaría la integración con el núcleo de docs-agent. Crearla desde un workflow esconde el esquema dentro de n8n. Con un archivo versionado, el esquema queda a la vista en git.
 - **Columnas de tokens separadas + `total_tokens`:** el total permite sumar el consumo del día con un `SELECT` simple (es el extra de "cortar si pasa N tokens"); por eso hay un índice en `created_at`. `http_status` es obligatorio porque también se registran las llamadas fallidas: el monitoreo tiene que ver los errores, no solo los éxitos.
+
+## N6. Errores de la API: "Never Error" + IF por status, no Error Trigger
+
+- **Elegido:** el HTTP Request a `/ask` tiene **Never Error** e **Include Response Headers and Status** activados. Después, un IF (`¿/ask respondió 200?`) decide el camino.
+- **Alternativas:** dejar que el nodo falle y capturar el fallo con un workflow de **Error Trigger**, o activar *Retry On Fail* en el nodo.
+- **Por qué:** con un webhook esperando respuesta, si el nodo revienta, el cliente recibe un 500 genérico. Así, un 422 (pregunta inválida), un 429 (presupuesto agotado) o un 503 (corpus vacío) se devuelven al cliente **con su mismo código** y el `detail` de docs-agent. El Error Trigger sirve para avisar (Slack, correo) cuando algo falla en un workflow **sin** cliente esperando. *Retry* no ayuda con un 422 y docs-agent ya reintenta contra OpenAI.
+- **Aprendido:** la salida del HTTP Request con "Include Response Headers and Status" tiene la forma `{ body, headers, statusCode, statusMessage }`; por eso los nodos siguientes usan `$json.statusCode` y `$json.body.answer`.
+
+## N7. Se registran también las llamadas fallidas
+
+- **Elegido:** las tres ramas (con respaldo, sin respaldo, error de `/ask`) terminan en el mismo nodo Postgres. Las fallidas guardan `question` + `http_status` y dejan el resto en null.
+- **Alternativas:** registrar solo los éxitos.
+- **Por qué:** monitorear un agente en producción es ver también la tasa de errores y de "no encontré", no solo el consumo de tokens. Con este log sale directo: `select http_status, grounded, count(*), sum(total_tokens) from n8n_question_log group by 1, 2`.
+- **Detalle:** el nodo Postgres usa **Map Automatically**: cada campo del item va a la columna con el mismo nombre. Por eso los nodos **Edit Fields (Set)** arman items con exactamente los nombres de las columnas. `citations` se manda como texto JSON y Postgres lo guarda como `jsonb` (verificado: `jsonb_typeof = array`).
+
+## N8. Un solo "Responder" con status dinámico + un "Responder 400" temprano
+
+- **Elegido:** si falta `question`, se responde 400 **antes** de llamar a la API (no se gasta nada). Si no, un único Respond to Webhook al final usa `{{ $json.http_status }}` como código y arma el body según el caso.
+- **Alternativas:** un Respond to Webhook por rama.
+- **Por qué:** con un solo nodo final, todas las respuestas pasan primero por el log. El Webhook está en modo **"Using 'Respond to Webhook' Node"** justamente para controlar código y cuerpo.
+- **Aprendido:** la URL de prueba (`/webhook-test/ask`) solo funciona mientras el editor está "escuchando"; la de producción (`/webhook/ask`) solo después de **Publish**. En la 2.x, "publicar" reemplaza al antiguo interruptor "Active", y cada publicación crea una versión con nombre.
+
+## Exportar sin secretos
+
+`n8n export:workflow` nunca incluye el valor de las credenciales: solo `{id, name}`. Pero **sí** incluye al dueño (nombre y correo) en `shared`. `sanitize_export.py` quita eso y los metadatos de la instancia, y falla si queda algún `@`. El export limpio se volvió a importar sin errores (`n8n import:workflow`).

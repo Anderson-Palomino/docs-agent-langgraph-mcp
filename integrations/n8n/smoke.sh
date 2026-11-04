@@ -31,10 +31,21 @@ paso2_tabla() {
   else fail "n8n_question_log tiene las 11 columnas del plan (obtuve: '${cols}')"; fi
 }
 
+paso2_webhook() {
+  echo "Paso 2: webhook → docs-agent → log"
+  local antes despues
+  antes=$(psql_docs "select count(*) from n8n_question_log")
+  python -I -X utf8 smoke_webhook.py || fallos=$((fallos+$?))
+  despues=$(psql_docs "select count(*) from n8n_question_log")
+  # 4 llamadas llegan a /ask (FastAPI, fuera de tema, 1001 caracteres, comillas): 4 filas nuevas
+  if [ $((despues-antes)) -eq 4 ]; then ok "4 filas nuevas en n8n_question_log"
+  else fail "4 filas nuevas en n8n_question_log (hubo $((despues-antes)))"; fi
+}
+
 case "${1:-todo}" in
   1) paso1 ;;
-  2) paso2_tabla ;;
-  todo) paso1; paso2_tabla ;;
+  2) paso2_tabla; paso2_webhook ;;
+  todo) paso1; paso2_tabla; paso2_webhook ;;
 esac
 echo "Fallos: $fallos"
 exit $fallos
