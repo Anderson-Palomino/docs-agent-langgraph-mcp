@@ -97,7 +97,8 @@
         -208,
         -48
       ],
-      "id": "81a8016c-10d3-4d85-afb5-5c27446cb51f"
+      "id": "81a8016c-10d3-4d85-afb5-5c27446cb51f",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -321,7 +322,7 @@
             {
               "id": "e2",
               "name": "http_status",
-              "value": "={{ $json.statusCode }}",
+              "value": "={{ $json.statusCode ?? 502 }}",
               "type": "number"
             }
           ]
@@ -377,7 +378,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($json.http_status === 200 ? { answer: $json.answer, citations: $json.citations, grounded: $json.grounded } : { error: $('Llamar /ask').item.json.body.detail ?? 'Error de docs-agent' }) }}",
+        "responseBody": "={{ JSON.stringify($json.http_status === 200 ? { answer: $json.answer, citations: $json.citations, grounded: $json.grounded } : { error: $('Llamar /ask').item.json.body?.detail ?? 'docs-agent no respondió (caído o timeout)' }) }}",
         "options": {
           "responseCode": "={{ $json.http_status }}"
         }
@@ -427,6 +428,13 @@
         [
           {
             "node": "¿/ask respondió 200?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error de /ask",
             "type": "main",
             "index": 0
           }

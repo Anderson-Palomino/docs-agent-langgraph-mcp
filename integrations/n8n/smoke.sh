@@ -47,11 +47,25 @@ paso3_mcp() {
   python -I -X utf8 smoke_mcp.py || fallos=$((fallos+$?))
 }
 
+paso2_caida() {
+  echo "Paso 2: docs-agent caído"
+  local antes despues
+  antes=$(psql_docs "select count(*) from n8n_question_log where http_status = 502")
+  (cd "$RAIZ" && docker compose stop api >/dev/null 2>&1)
+  python -I -X utf8 smoke_api_caida.py || fallos=$((fallos+1))
+  (cd "$RAIZ" && docker compose start api >/dev/null 2>&1)
+  despues=$(psql_docs "select count(*) from n8n_question_log where http_status = 502")
+  if [ $((despues-antes)) -eq 1 ]; then ok "la caída quedó en el log (http_status 502)"
+  else fail "la caída quedó en el log (http_status 502)"; fi
+  for i in $(seq 1 20); do curl -sf http://127.0.0.1:8000/health >/dev/null && break; sleep 2; done
+}
+
 case "${1:-todo}" in
   1) paso1 ;;
   2) paso2_tabla; paso2_webhook ;;
   3) paso3_mcp ;;
-  todo) paso1; paso2_tabla; paso2_webhook; paso3_mcp ;;
+  caida) paso2_caida ;;
+  todo) paso1; paso2_tabla; paso2_webhook; paso2_caida; paso3_mcp ;;
 esac
 echo "Fallos: $fallos"
 exit $fallos

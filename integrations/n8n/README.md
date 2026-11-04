@@ -79,6 +79,7 @@ curl -s -X POST http://127.0.0.1:5678/webhook/ask \
 | pregunta fuera de la doc | 200, `"No encontré esto en la documentación"`, `grounded: false` |
 | body sin `question` / no JSON | 400 `{"error": ...}`, sin llamar a `/ask` |
 | `/ask` falla (422, 429, 502, 503) | el mismo código, con `{"error": <detail de docs-agent>}` |
+| docs-agent no responde (caído, timeout) | 502 `{"error": "docs-agent no respondió (caído o timeout)"}` |
 
 Todo lo que llega a `/ask` queda en `n8n_question_log`, también los errores:
 
@@ -110,7 +111,7 @@ En el editor de n8n, **Open chat**:
 ## Pruebas de humo
 
 ```bash
-./smoke.sh          # todo: 1 (n8n) · 2 (tabla + webhook) · 3 (MCP)
+./smoke.sh          # todo: 1 (n8n) · 2 (tabla + webhook) · caida (apaga api un momento) · 3 (MCP)
 ./smoke.sh 2        # solo el paso 2
 ```
 
