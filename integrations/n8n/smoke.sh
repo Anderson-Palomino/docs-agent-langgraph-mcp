@@ -19,9 +19,22 @@ paso1() {
       'fetch("http://api:8000/health").then(r=>r.json()).then(j=>process.exit(j.status==="ok"?0:1)).catch(()=>process.exit(1))'
 }
 
+RAIZ="$(cd ../.. && pwd)"
+psql_docs() { (cd "$RAIZ" && docker compose exec -T db psql -U docs -d docs -tAc "$1"); }
+
+paso2_tabla() {
+  echo "Tabla de log"
+  local esperado="id,created_at,question,answer,grounded,citations,embedding_tokens,prompt_tokens,completion_tokens,total_tokens,http_status"
+  local cols
+  cols=$(psql_docs "select string_agg(column_name, ',' order by ordinal_position) from information_schema.columns where table_name = 'n8n_question_log'" 2>&1)
+  if [ "$cols" = "$esperado" ]; then ok "n8n_question_log tiene las 11 columnas del plan"
+  else fail "n8n_question_log tiene las 11 columnas del plan (obtuve: '${cols}')"; fi
+}
+
 case "${1:-todo}" in
   1) paso1 ;;
-  todo) paso1 ;;
+  2) paso2_tabla ;;
+  todo) paso1; paso2_tabla ;;
 esac
 echo "Fallos: $fallos"
 exit $fallos

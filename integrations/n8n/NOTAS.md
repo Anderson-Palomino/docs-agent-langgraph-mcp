@@ -29,3 +29,10 @@ Decisiones del ejercicio (formato: Elegido / Alternativas / Por qué) y lo que f
 ## Avisos que muestra n8n al arrancar
 
 - Sale una deprecación del modo *internal* de los *task runners* (que ejecutan el nodo Code) y de algunos valores por defecto que bajarán en versiones futuras. No usamos el nodo Code, así que no se configura nada; queda anotado por si pregunta "¿cómo escalarías n8n?": los *task runners* se ejecutan como proceso aparte (modo `external`).
+
+## N5. Dónde se crea la tabla de log
+
+- **Elegido:** un SQL propio e idempotente (`sql/001_n8n_question_log.sql`, con `CREATE TABLE IF NOT EXISTS`) que se aplica a mano con `psql` dentro del contenedor `db`.
+- **Alternativas:** agregar la tabla a `db/init.sql` de docs-agent, o crearla desde n8n con un nodo Postgres de "ejecutar query".
+- **Por qué:** `db/init.sql` solo corre cuando el volumen de Postgres es nuevo, así que en una base existente no haría nada, y además mezclaría la integración con el núcleo de docs-agent. Crearla desde un workflow esconde el esquema dentro de n8n. Con un archivo versionado, el esquema queda a la vista en git.
+- **Columnas de tokens separadas + `total_tokens`:** el total permite sumar el consumo del día con un `SELECT` simple (es el extra de "cortar si pasa N tokens"); por eso hay un índice en `created_at`. `http_status` es obligatorio porque también se registran las llamadas fallidas: el monitoreo tiene que ver los errores, no solo los éxitos.
