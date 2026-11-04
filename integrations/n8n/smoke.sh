@@ -42,10 +42,16 @@ paso2_webhook() {
   else fail "4 filas nuevas en n8n_question_log (hubo $((despues-antes)))"; fi
 }
 
+paso3_mcp() {
+  echo "Paso 3a: docs-agent por MCP"
+  python -I -X utf8 smoke_mcp.py || fallos=$((fallos+$?))
+}
+
 case "${1:-todo}" in
   1) paso1 ;;
   2) paso2_tabla; paso2_webhook ;;
-  todo) paso1; paso2_tabla; paso2_webhook ;;
+  3) paso3_mcp ;;
+  todo) paso1; paso2_tabla; paso2_webhook; paso3_mcp ;;
 esac
 echo "Fallos: $fallos"
 exit $fallos

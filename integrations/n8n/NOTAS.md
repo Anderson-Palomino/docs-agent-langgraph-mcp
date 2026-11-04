@@ -61,3 +61,18 @@ Decisiones del ejercicio (formato: Elegido / Alternativas / Por qué) y lo que f
 ## Exportar sin secretos
 
 `n8n export:workflow` nunca incluye el valor de las credenciales: solo `{id, name}`. Pero **sí** incluye al dueño (nombre y correo) en `shared`. `sanitize_export.py` quita eso y los metadatos de la instancia, y falla si queda algún `@`. El export limpio se volvió a importar sin errores (`n8n import:workflow`).
+
+## N9. Cómo recibe la herramienta MCP sus argumentos
+
+- **Elegido:** un **HTTP Request** usado como herramienta (en el JSON se llama `httpRequestTool`), colgado del **MCP Server Trigger**. El body usa `$fromAI('question', 'La pregunta sobre FastAPI…', 'string')`.
+- **Alternativas:** **Call n8n Workflow Tool** apuntando a un sub-workflow con **Execute Workflow Trigger** que declara el input `question`.
+- **Por qué:** la doc de `$fromAI` solo lo menciona para herramientas de un AI Agent, así que había que probarlo. Funcionó: n8n convierte cada `$fromAI` en un parámetro del esquema de la herramienta que ve el cliente MCP (`tools/list` muestra `question: string`). El sub-workflow quedaría para lógica más larga (validar, registrar en el log, etc.).
+- **Detalle:** el nombre del nodo (`ask_docs_agent`) es el nombre de la herramienta, y su **Description** es lo que lee el modelo para decidir cuándo usarla. Esa descripción es, en la práctica, parte del prompt.
+
+## N10. MCP sin agente de n8n, protegido con Bearer
+
+- **Elegido:** el workflow expone `/ask` directamente como herramienta MCP. **Claude Code hace de agente**: él decide cuándo llamar a la herramienta. Autenticación: **Bearer Auth** con un token aleatorio de 32 bytes.
+- **Alternativas:** exponer un AI Agent de n8n (dos LLM en cadena, más costo y más latencia); autenticación **None**; o **n8n User Auth (OAuth2)**.
+- **Por qué:** MCP sirve para que *cualquier* cliente (Claude Code, Claude Desktop, Copilot…) use herramientas internas sin integrarlas una por una. Si el cliente ya es un agente, poner otro agente detrás solo duplica decisiones. Con **None**, cualquiera que llegue al puerto puede usar la herramienta (y gastar tokens de OpenAI). OAuth2 conviene cuando cada usuario debe entrar con su propia cuenta de n8n.
+- **Dónde vive el token:** en `integrations/n8n/.env` (ignorado), en la credencial de n8n y en la config **local** de Claude Code (`~/.claude.json`, registrado con `claude mcp add --scope local`). Nunca en el repo: lo comprueba un `grep` del valor exacto antes de commitear.
+- **Aprendido:** en el nodo v2 la URL es `/mcp/<path>` (producción) o `/mcp-test/<path>` (prueba) y el transporte es HTTP con *streaming*, sin las rutas `/sse` del v1. El servidor responde a `initialize`, `tools/list` y `tools/call` como cualquier servidor MCP (`smoke_mcp.py` lo prueba "a mano", sin SDK).

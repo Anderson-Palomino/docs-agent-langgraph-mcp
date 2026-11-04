@@ -1,0 +1,74 @@
+{
+  "id": "aAP2zXNg1qCTocik",
+  "name": "02-mcp-docs-agent",
+  "description": null,
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "bearerAuth",
+        "path": "docs-agent",
+        "instructions": "Servidor MCP de docs-agent: responde preguntas sobre la documentación oficial de FastAPI con citas. Usa ask_docs_agent para cualquier duda de FastAPI y muestra las URLs citadas."
+      },
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 2.1,
+      "position": [
+        -112,
+        -96
+      ],
+      "webhookId": "5d1c7f0e-2b7a-4c55-9d1e-mcp000000001",
+      "id": "eb9342bd-1b22-4d2e-afdf-772deaef64e8",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "pxkk0VN265f7AhlZ",
+          "name": "MCP docs-agent token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Responde preguntas sobre la documentación oficial de FastAPI (versión 0.162.0) usando RAG. Devuelve answer, citations [{url,title}] y grounded (false si la documentación no cubre la pregunta).",
+        "method": "POST",
+        "url": "http://api:8000/ask",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: $fromAI('question', 'La pregunta sobre FastAPI, en el idioma del usuario', 'string') }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "name": "ask_docs_agent",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        112,
+        112
+      ],
+      "id": "ecc03d34-d2c7-4a3b-9160-47fa37789409"
+    }
+  ],
+  "connections": {
+    "ask_docs_agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
