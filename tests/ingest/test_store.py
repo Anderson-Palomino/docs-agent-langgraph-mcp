@@ -1,3 +1,4 @@
+import psycopg
 import pytest
 
 from docs_agent.budget import KIND_INGEST, tokens_used_today
@@ -58,9 +59,10 @@ def test_replace_corpus_replaces_sections(db_conn):
 def test_replace_corpus_rolls_back_sections_on_error(db_conn):
     old = [Section("https://x/a/", "A", "old a")]
     replace_corpus(db_conn, "0.1", [CHUNK], VEC, old)
-    with pytest.raises(Exception):
-        replace_corpus(
-            db_conn, "0.1", [CHUNK, CHUNK], VEC, [Section("https://x/z/", "Z", "new z")]
-        )  # embeddings de largo distinto
+    new_chunk = Chunk("https://x/new/#n", "N", "new chunk", 1)
+    dup = [Section("https://x/z/", "Z", "one"), Section("https://x/z/", "Z", "two")]
+    # chunks válidos: el fallo ocurre en el INSERT de sections, después del de chunks
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        replace_corpus(db_conn, "0.1", [new_chunk], VEC, dup)
     assert _sections(db_conn) == [("0.1", "https://x/a/", "old a")]
-    assert db_conn.execute("select count(*) from chunks").fetchone()[0] == 1
+    assert db_conn.execute("select url from chunks").fetchall() == [(CHUNK.url,)]

@@ -15,7 +15,10 @@ def replace_corpus(
     embeddings: list[list[float]],
     sections: Sequence[Section] = (),
 ) -> int:
-    """Reemplaza chunks y sections del source_ref en una sola transacción; devuelve los chunks insertados."""
+    """Reemplaza chunks y sections del source_ref en una sola transacción; devuelve los chunks insertados.
+
+    Omitir `sections` borra las secciones existentes del source_ref.
+    """
     if len(chunks) != len(embeddings):
         raise ValueError("chunks and embeddings must have the same length")
     rows = [
