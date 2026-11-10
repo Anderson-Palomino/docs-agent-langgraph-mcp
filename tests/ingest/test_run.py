@@ -36,6 +36,16 @@ def test_run_ingest_stores_and_records_usage(db_conn, settings_factory):
     assert refs == [(settings.fastapi_docs_ref,)]
 
 
+def test_run_ingest_stores_sections(db_conn, settings_factory):
+    settings = settings_factory()
+    run_ingest(settings, FakeOpenAI(), db_conn)
+    rows = db_conn.execute("select url, title, content from sections order by url").fetchall()
+    urls = [r[0] for r in rows]
+    assert "https://fastapi.tiangolo.com/a/#one" in urls
+    assert "https://fastapi.tiangolo.com/b/#two" in urls
+    assert any("Body one." in r[2] for r in rows)
+
+
 def test_main_exits_1_without_api_key(monkeypatch, capsys):
     monkeypatch.setenv("OPENAI_API_KEY", "")
     from docs_agent.config import get_settings

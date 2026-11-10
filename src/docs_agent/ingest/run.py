@@ -8,7 +8,7 @@ from openai import OpenAI
 from docs_agent.budget import KIND_INGEST, record_usage
 from docs_agent.config import Settings, get_settings
 from docs_agent.db import connect
-from docs_agent.ingest.chunk import chunk_document
+from docs_agent.ingest.chunk import chunk_document, split_sections
 from docs_agent.ingest.embed import embed_texts
 from docs_agent.ingest.fetch import fetch_docs
 from docs_agent.ingest.store import replace_corpus
@@ -32,13 +32,14 @@ def _ingest(settings: Settings, client, conn: psycopg.Connection) -> tuple[int, 
             doc, settings.chunk_max_tokens, settings.chunk_overlap_tokens
         )
     ]
+    sections = [s for doc in docs for s in split_sections(doc)]
     estimate = sum(c.token_count for c in chunks)
     if estimate > settings.ingest_max_tokens:
         raise IngestLimitExceeded(estimate, settings.ingest_max_tokens)
     embeddings, tokens = embed_texts(
         client, [c.content for c in chunks], settings.embedding_model
     )
-    replace_corpus(conn, settings.fastapi_docs_ref, chunks, embeddings)
+    replace_corpus(conn, settings.fastapi_docs_ref, chunks, embeddings, sections)
     record_usage(conn, KIND_INGEST, tokens)
     return len(chunks), tokens
 

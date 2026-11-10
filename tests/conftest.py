@@ -74,11 +74,11 @@ def db_conn():
     except psycopg.OperationalError:
         pytest.skip("Postgres not available")
     try:
-        conn.execute("TRUNCATE chunks, token_usage")
+        conn.execute("TRUNCATE chunks, sections, token_usage")
         conn.commit()
         yield conn
         conn.rollback()
-        conn.execute("TRUNCATE chunks, token_usage")
+        conn.execute("TRUNCATE chunks, sections, token_usage")
         conn.commit()
     finally:
         conn.close()
