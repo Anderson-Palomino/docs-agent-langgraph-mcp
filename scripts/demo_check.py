@@ -18,7 +18,6 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,26 +90,6 @@ def parse_passed(pytest_output: str) -> int | None:
     return int(matches[-1]) if matches else None
 
 
-async def invoke_recording(
-    invoke: Callable[[], Awaitable[dict]], record: Callable[[], None], warn: Callable[[str], None]
-) -> dict:
-    """Corre el grafo y registra lo gastado siempre (como el `finally` de `/ask`).
-
-    Si el grafo falló, un error al registrar no tapa el error original: se avisa en una línea y se relanza el
-    original. Si el grafo terminó bien, el error de base de datos se propaga.
-    """
-    try:
-        state = await invoke()
-    except BaseException:
-        try:
-            await asyncio.to_thread(record)
-        except psycopg.Error as exc:
-            warn(f"no se pudo registrar el gasto de tokens: {type(exc).__name__}")
-        raise
-    await asyncio.to_thread(record)
-    return state
-
-
 def _mark(ok: bool | None) -> Text:
     if ok is None:
         return Text("")
@@ -171,7 +150,7 @@ async def _run(questions: list[tuple[int | None, str]], settings, conn, client, 
 
     from docs_agent.agent.graph import build_graph, is_budget_error
     from docs_agent.agent.mcp_client import DocsMCPClient, DocsServerUnavailable, DocsToolError, stdio_connect
-    from docs_agent.agent.runner import invoke_config, make_deps, record_spent
+    from docs_agent.agent.runner import invoke_config, invoke_recording, make_deps, record_spent
     from docs_agent.budget import BudgetExceeded
     from docs_agent.pricing import cost_usd, total_tokens
 

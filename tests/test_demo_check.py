@@ -97,44 +97,6 @@ def test_q_rejects_empty_or_too_long(demo, q):
     assert exc.value.code == 2  # argparse.error
 
 
-def test_invoke_recording_keeps_original_error(demo):
-    import asyncio
-
-    import psycopg
-
-    warnings: list[str] = []
-
-    async def invoke():
-        raise RuntimeError("grafo")
-
-    def record():
-        raise psycopg.OperationalError("db caída")
-
-    with pytest.raises(RuntimeError, match="grafo"):
-        asyncio.run(demo.invoke_recording(invoke, record, warnings.append))
-    assert len(warnings) == 1 and "OperationalError" in warnings[0]
-
-
-def test_invoke_recording_records_and_propagates_db_error_on_success(demo):
-    import asyncio
-
-    import psycopg
-
-    recorded: list[bool] = []
-
-    async def invoke():
-        return {"route": "answer"}
-
-    assert asyncio.run(demo.invoke_recording(invoke, lambda: recorded.append(True), lambda m: None)) == {"route": "answer"}
-    assert recorded == [True]
-
-    def record():
-        raise psycopg.OperationalError("db caída")
-
-    with pytest.raises(psycopg.OperationalError):
-        asyncio.run(demo.invoke_recording(invoke, record, lambda m: None))
-
-
 def test_render_has_columns(demo):
     table = demo.render([], {"total_cost_usd": 0.0, "avg_latency_ms": 0.0, "tests_passed": None})
     assert [c.header for c in table.columns] == [

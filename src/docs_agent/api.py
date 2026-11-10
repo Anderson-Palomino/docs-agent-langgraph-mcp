@@ -1,6 +1,7 @@
 """API HTTP: POST /ask (grafo del agente sobre el servidor MCP, D30-D33) y GET /health."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -13,13 +14,15 @@ from pydantic import BaseModel, field_validator, model_serializer
 
 from docs_agent.agent.graph import build_graph, is_budget_error
 from docs_agent.agent.mcp_client import DocsMCPClient, DocsServerUnavailable, DocsToolError, stdio_connect
-from docs_agent.agent.runner import invoke_config, make_deps, record_spent
+from docs_agent.agent.runner import invoke_config, invoke_recording, make_deps, record_spent
 from docs_agent.budget import KIND_ASK, BudgetExceeded, check_budget
 from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
+
+logger = logging.getLogger(__name__)
 
 OPENAI_TIMEOUT_S = 30
 OPENAI_MAX_RETRIES = 2
@@ -122,7 +125,12 @@ async def ask(
 
     deps = make_deps(conn, client, docs_tools, settings)
     try:
-        state = await build_graph(deps).ainvoke({"question": req.question}, config=invoke_config(req.question))
+        # Registra lo gastado también si el grafo falla; un error de Postgres al registrar no tapa el 429/502/503.
+        state = await invoke_recording(
+            lambda: build_graph(deps).ainvoke({"question": req.question}, config=invoke_config(req.question)),
+            lambda: record_spent(conn, deps),
+            logger.warning,
+        )
     except BudgetExceeded:
         raise HTTPException(status_code=429, detail="Daily token budget exhausted")
     except DocsServerUnavailable:  # incluye DocsToolTimeout
@@ -133,8 +141,6 @@ async def ask(
         raise HTTPException(status_code=502, detail="Docs tool error")
     except openai.OpenAIError:
         raise HTTPException(status_code=502, detail="Upstream model error")
-    finally:
-        await asyncio.to_thread(record_spent, conn, deps)
 
     usage = state["usage"]
     classifier_tokens = usage["classifier_prompt_tokens"] + usage["classifier_completion_tokens"]

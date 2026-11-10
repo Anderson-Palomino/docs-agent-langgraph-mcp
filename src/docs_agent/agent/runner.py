@@ -4,6 +4,8 @@ Quien invoca sigue llamando a `build_graph(deps).ainvoke(...)` y traduce los err
 API, código de salida en el script); aquí solo vive lo que ambos deben hacer igual.
 """
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import psycopg
@@ -41,3 +43,24 @@ def record_spent(conn: psycopg.Connection, deps: AgentDeps) -> None:
     """
     if deps.spent["chat_tokens"]:
         record_usage(conn, KIND_ASK, deps.spent["chat_tokens"])
+
+
+async def invoke_recording(
+    invoke: Callable[[], Awaitable[dict]], record: Callable[[], None], warn: Callable[[str], None]
+) -> dict:
+    """Corre el grafo y registra lo gastado siempre (`/ask` y `demo_check`).
+
+    Si el grafo falló, un error de base de datos al registrar no tapa el error original (que la API traduce a
+    429/502/503): se avisa en una línea, solo con el tipo de error (el mensaje de libpq podría incluir parte de
+    `DATABASE_URL`), y se relanza el original. Si el grafo terminó bien, el error de base de datos se propaga.
+    """
+    try:
+        state = await invoke()
+    except BaseException:
+        try:
+            await asyncio.to_thread(record)
+        except psycopg.Error as exc:
+            warn(f"could not record spent tokens: {type(exc).__name__}")
+        raise
+    await asyncio.to_thread(record)
+    return state

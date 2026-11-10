@@ -148,6 +148,39 @@ def test_ask_docs_server_unavailable_503(make_client, seeded_corpus, db_conn):
     assert tokens_used_today(db_conn, KIND_ASK) == 120
 
 
+def test_ask_record_failure_keeps_mapped_error(make_client, seeded_corpus, monkeypatch, caplog):
+    """Postgres cae al registrar el gasto tras un error del grafo: sigue el 503, no un 500 (una línea de aviso)."""
+    import psycopg
+
+    from docs_agent.agent.mcp_client import DocsServerUnavailable
+    from tests.fakes import FakeOpenAI
+
+    def record_fails(conn, deps):
+        raise psycopg.OperationalError("connection to server at 127.0.0.1 failed: secret-ish detail")
+
+    monkeypatch.setattr("docs_agent.api.record_spent", record_fails)
+    c = make_client(FakeOpenAI(), tools=_RaisingTools(DocsServerUnavailable("down")))
+    r = c.post("/ask", json={"question": "hi"})
+    assert r.status_code == 503 and r.json()["detail"] == "Docs server unavailable"
+    warnings = [rec for rec in caplog.records if rec.name == "docs_agent.api" and rec.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "OperationalError" in warnings[0].getMessage() and "127.0.0.1" not in warnings[0].getMessage()
+
+
+def test_ask_record_failure_on_success_propagates(make_client, seeded_corpus, monkeypatch):
+    import psycopg
+
+    from tests.fakes import FakeOpenAI
+
+    def record_fails(conn, deps):
+        raise psycopg.OperationalError("db down")
+
+    monkeypatch.setattr("docs_agent.api.record_spent", record_fails)
+    c = make_client(FakeOpenAI())
+    with pytest.raises(psycopg.OperationalError):
+        c.post("/ask", json={"question": "hi"})
+
+
 def test_ask_docs_tool_timeout_503(make_client, seeded_corpus):
     from docs_agent.agent.mcp_client import DocsToolTimeout
     from tests.fakes import FakeOpenAI
