@@ -1,13 +1,13 @@
 # docs-agent
 
-A RAG agent that answers questions about the FastAPI documentation and **cites the exact doc section** it used. This is **Week 1 of 4** of a portfolio project (FastAPI + pgvector); **Week 2** adds a LangGraph agent and an MCP server (below); evaluations come later.
+A RAG agent that answers questions about the FastAPI documentation and **cites the exact doc section** it used. This is **Week 2 of 4** of a portfolio project: Week 1 built the RAG API (FastAPI + pgvector); Week 2 turns `/ask` into a LangGraph agent that reads the corpus through its own MCP server, which Claude can also use (below). Evaluations come later.
 
 ## Architecture
 
 1. **Ingest** downloads the `docs/en/docs/**/*.md` of `fastapi/fastapi` at a pinned tag and splits it by `##`/`###` sections (max 800 tokens, 100 overlap), each with its own `#anchor` URL.
 2. Chunks are embedded with `text-embedding-3-small` (1536 dims) and stored in Postgres + pgvector.
-3. `POST /ask` embeds the question and retrieves the top 5 chunks by cosine similarity.
-4. `gpt-4.1-mini` answers using only that context and returns structured `{answer, citations}`.
+3. `POST /ask` runs a LangGraph graph: a classifier (`gpt-4.1-mini`) sends out-of-domain questions straight to a fixed "no sé"; otherwise the graph calls the MCP server (`search_docs`, one persistent stdio session), which embeds the question and returns the top 5 chunks by cosine similarity. If the best distance is above the threshold (D21), the answer is "no sé" too.
+4. Otherwise the graph reads the best hit's full section with `get_section`, and `gpt-4.1-mini` answers using only that section and the full top-k chunks, returning structured `{answer, citations}`.
 5. Cited URLs are validated against the retrieved chunks; invented ones are dropped (`grounded: false` if none survive). Daily token budgets cap the cost.
 
 ## Requirements
@@ -28,6 +28,15 @@ curl -s -X POST localhost:8000/ask -H 'content-type: application/json' \
 
 Add `?debug=true` to `/ask` to also get the retrieved chunks.
 
+**Upgrading from Week 1:** Postgres only runs `db/init.sql` on a new volume (D14), so an existing Docker volume lacks the `sections` table that `get_section` reads. Apply it (idempotent) and re-ingest:
+
+```bash
+docker compose exec -T db psql -U docs -d docs < db/init.sql
+docker compose run --rm api python -m docs_agent.ingest.run
+```
+
+Until then, `get_section` fails and the graph answers from the search chunks alone (it logs a warning).
+
 ## Configuration
 
 Environment variables (or `.env`):
@@ -45,6 +54,9 @@ Environment variables (or `.env`):
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |
 | `NO_ANSWER_DISTANCE_THRESHOLD` | `0.52` | Best cosine distance above which the graph answers "no sé" (D21) |
 | `MCP_BUDGET_SCOPE` / `MCP_DAILY_TOKEN_BUDGET` | `mcp` / `100000` | Which budget the MCP server spends (`mcp` when Claude launches it, `ask` when the API does) and its daily cap (D29) |
+| `MCP_CALL_TIMEOUT_S` | `15` | Per-call timeout of the graph's MCP client; the server's OpenAI timeout is derived from it (D30) |
+| `PRICE_CHAT_INPUT_PER_MTOK` / `PRICE_CHAT_OUTPUT_PER_MTOK` / `PRICE_EMBEDDING_PER_MTOK` | `0.40` / `1.60` / `0.02` | USD per million tokens, used by `scripts/demo_check.py` to report cost |
+| `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` | `false` / - / `docs-agent` | Optional tracing (see below) |
 
 ## Agent graph
 
@@ -90,7 +102,7 @@ The response keeps the Week 1 fields and adds `route` (`answer` | `no_se`) and `
 | Tool | What it does |
 |---|---|
 | `list_sources` | Describes the corpus: project, docs version, number of pages, chunks and sections |
-| `search_docs` | Semantic top-k search (k clamped to 1..10); returns title, url, distance, snippet, `best_distance` and `in_corpus` |
+| `search_docs` | Semantic top-k search (k clamped to 1..10); returns title, url, distance, snippet, `best_distance` and `in_corpus`; `include_content=true` adds each chunk's full text (the graph uses it) |
 | `get_section` | Full Markdown of one section by its exact URL (as returned by `search_docs`) |
 
 Reasoning stays in the client (Claude, or the graph): the server only serves data (D27). Every call writes one line to **stderr** (stdout is the MCP channel), for example:
@@ -175,11 +187,11 @@ docker compose up -d db
 uv run pytest -q
 ```
 
-196 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
+206 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
 
 ## Example questions
 
-Real outputs from `POST /ask` (corpus: FastAPI 0.162.0, 1088 chunks; answers trimmed to the first paragraph(s), `usage` omitted). Every cited URL returned HTTP 200 and the cited sections cover the topic.
+Real outputs from `POST /ask` (corpus: FastAPI 0.162.0; answers trimmed to the first paragraph(s), `usage` omitted). Every cited URL returned HTTP 200 and the cited sections cover the topic. These were captured in **Week 1**, with the linear pipeline and a 1088-chunk corpus; the current corpus has 1128 chunks (D25), and Week 2 responses also carry `route` and `reason` (and `usage.classifier_tokens`), so the exact text and citations may differ.
 
 **1. How do I declare a request body with Pydantic?**
 
