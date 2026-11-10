@@ -44,6 +44,18 @@ Environment variables (or `.env`):
 | `ASK_DAILY_TOKEN_BUDGET` | `200000` | Max tokens/day (UTC) spent by `/ask`; beyond it, HTTP 429 |
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |
 
+## Tracing (optional)
+
+Off by default; with it off nothing changes. To send traces to [LangSmith](https://smith.langchain.com/) (free Developer plan), set in `.env`:
+
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...   # a "Tracing Only" key is enough
+LANGSMITH_PROJECT=docs-agent
+```
+
+Each `/ask` becomes an `ask` trace with the graph nodes and the OpenAI calls (tokens, latency, cost). The MCP server's tool calls appear as separate traces (no trace propagation over stdio). See D34 in `docs/decisiones.md`.
+
 ## Tests
 
 ```bash
