@@ -7,6 +7,7 @@ backend asyncio de anyio (el de FastAPI y LangGraph).
 """
 
 import asyncio
+import logging
 import os
 import sys
 from collections.abc import Callable
@@ -21,6 +22,7 @@ from mcp_types import CONNECTION_CLOSED, TextContent
 from docs_agent.config import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[3]  # src/docs_agent/agent/mcp_client.py -> raíz (pyproject.toml)
+logger = logging.getLogger(__name__)
 CLOSE_TIMEOUT_S = 10.0  # el SDK ya acota el apagado del proceso (cierra stdin, espera, mata el árbol)
 
 # Qué significa "el proceso del servidor murió" en mcp 2.3 sobre Windows. Medido matando el árbol del
@@ -111,13 +113,19 @@ class _Session:
         if self._task is None:
             return
         with anyio.CancelScope(shield=True):
-            self._stop.set()
+            if self.client is None:
+                # Nunca abrió (p. ej. timeout en el arranque): la tarea sigue en `__aenter__` y no mira `_stop`.
+                self._task.cancel()
+            else:
+                self._stop.set()
+                with anyio.move_on_after(CLOSE_TIMEOUT_S):
+                    await self._done.wait()
+                if not self._done.is_set():
+                    self._task.cancel()
             with anyio.move_on_after(CLOSE_TIMEOUT_S):
                 await self._done.wait()
             if not self._done.is_set():
-                self._task.cancel()
-                with anyio.move_on_after(CLOSE_TIMEOUT_S):
-                    await self._done.wait()
+                logger.warning("MCP session task still running after close; abandoning it")
 
 
 class DocsMCPClient:
@@ -128,9 +136,12 @@ class DocsMCPClient:
         self.call_timeout_s = call_timeout_s
         self._session: _Session | None = None
         self._lock = asyncio.Lock()
+        self._closed = False
 
     async def call(self, tool: str, args: dict) -> dict:
         """`structured_content` de la herramienta; reconecta una vez si el proceso murió."""
+        if self._closed:
+            raise DocsServerUnavailable("MCP client closed")
         try:
             return await self._attempt(tool, args)
         except _ProcessDied:
@@ -141,6 +152,8 @@ class DocsMCPClient:
             raise DocsServerUnavailable(f"MCP server unavailable calling {tool}") from exc.__cause__
 
     async def aclose(self) -> None:
+        """Cierra la sesión; después `call` lanza `DocsServerUnavailable` y nunca reabre (no deja procesos)."""
+        self._closed = True
         async with self._lock:
             session, self._session = self._session, None
         if session is not None:
@@ -148,6 +161,8 @@ class DocsMCPClient:
 
     async def _get_session(self) -> _Session:
         async with self._lock:
+            if self._closed:
+                raise DocsServerUnavailable("MCP client closed")
             if self._session is not None and self._session.alive:
                 return self._session
             stale, self._session = self._session, None

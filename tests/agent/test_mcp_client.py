@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -214,6 +215,39 @@ async def test_session_opened_and_closed_in_different_tasks():
     await asyncio.create_task(client.call("list_sources", {}))
     await asyncio.create_task(client.call("list_sources", {}))
     await asyncio.create_task(client.aclose())
+    assert connect.count == 1
+    assert connect.closed == [0]
+
+
+@pytest.mark.anyio
+async def test_hang_on_startup_is_bounded():
+    """Un servidor colgado en el handshake no retiene la llamada más allá de ~2× el timeout (abrir + reintento)."""
+    entered = []
+
+    @asynccontextmanager
+    async def hanging():
+        entered.append(1)
+        await anyio.sleep(60)
+        yield None
+
+    client = DocsMCPClient(hanging, call_timeout_s=0.2)
+    start = time.perf_counter()
+    with anyio.fail_after(10):
+        with pytest.raises(DocsServerUnavailable):
+            await client.call("list_sources", {})
+    assert time.perf_counter() - start < 3 * 0.2
+    assert len(entered) == 2  # abrir y un reintento
+    await client.aclose()
+
+
+@pytest.mark.anyio
+async def test_closed_client_never_reopens():
+    connect = FakeConnect()
+    client = DocsMCPClient(connect, call_timeout_s=1)
+    await client.call("list_sources", {})
+    await client.aclose()
+    with pytest.raises(DocsServerUnavailable, match="closed"):
+        await client.call("list_sources", {})
     assert connect.count == 1
     assert connect.closed == [0]
 
