@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     no_answer_distance_threshold: float = 0.52  # D21
     mcp_budget_scope: Literal["mcp", "ask"] = "mcp"  # D29
     mcp_daily_token_budget: int = 100_000
+    mcp_call_timeout_s: float = 15.0  # D30
     langsmith_tracing: bool = False
     langsmith_api_key: str = ""
     langsmith_project: str = "docs-agent"
