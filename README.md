@@ -1,6 +1,6 @@
 # docs-agent
 
-A RAG agent that answers questions about the FastAPI documentation and **cites the exact doc section** it used. This is **Week 1 of 4** of a portfolio project (FastAPI + pgvector); later weeks add an agent loop (LangGraph), an MCP server and evaluations.
+A RAG agent that answers questions about the FastAPI documentation and **cites the exact doc section** it used. This is **Week 1 of 4** of a portfolio project (FastAPI + pgvector); **Week 2** adds a LangGraph agent and an MCP server (below); evaluations come later.
 
 ## Architecture
 
@@ -44,6 +44,93 @@ Environment variables (or `.env`):
 | `ASK_DAILY_TOKEN_BUDGET` | `200000` | Max tokens/day (UTC) spent by `/ask`; beyond it, HTTP 429 |
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |
 
+## Agent graph
+
+`POST /ask` runs a LangGraph graph (`src/docs_agent/agent/graph.py`). A classifier node routes out-of-domain questions straight to a fixed "no sé" answer; otherwise the graph searches the corpus through the MCP server, checks the best cosine distance against the threshold (D21) and either answers with citations or says it does not know. The diagram below is generated, not drawn by hand:
+
+```bash
+uv run python scripts/export_mermaid.py
+```
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	classify(classify)
+	search(search)
+	evaluate(evaluate)
+	answer(answer)
+	no_se(no_se)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> classify;
+	classify -.-> no_se;
+	classify -.-> search;
+	evaluate -.-> answer;
+	evaluate -.-> no_se;
+	search --> evaluate;
+	answer --> __end__;
+	no_se --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+```
+
+The response keeps the Week 1 fields and adds `route` (`answer` | `no_se`) and `reason` (`null` | `out_of_domain` | `insufficient_context`). See D32 and D33 in `docs/decisiones.md`.
+
+## MCP server
+
+`docs-agent-mcp` (stdio, `python -m docs_agent.mcp_server`) exposes the indexed corpus as three read-only tools:
+
+| Tool | What it does |
+|---|---|
+| `list_sources` | Describes the corpus: project, docs version, number of pages, chunks and sections |
+| `search_docs` | Semantic top-k search (k clamped to 1..10); returns title, url, distance, snippet, `best_distance` and `in_corpus` |
+| `get_section` | Full Markdown of one section by its exact URL (as returned by `search_docs`) |
+
+Reasoning stays in the client (Claude, or the graph): the server only serves data (D27). Every call writes one line to **stderr** (stdout is the MCP channel), for example:
+
+```text
+[mcp] search_docs query="¿Cómo protejo un endpoint con OAuth2 en FastAPI y obtengo el…" k=5 → 5 results · best=0.461 · in_corpus=yes · 1190 ms
+```
+
+The server needs the compose db up and `OPENAI_API_KEY` in `.env` (read from the repo directory, so run it with `--directory <repo>`). `search_docs` spends embedding tokens against `MCP_BUDGET_SCOPE`: it defaults to `mcp` (own budget, `MCP_DAILY_TOKEN_BUDGET=100000`) when Claude launches the server; the API launches it with `ask` so the graph spends the `/ask` budget (D29).
+
+### Connect from Claude Code
+
+```bash
+claude mcp add docs-agent --scope local -- uv --directory <repo> run python -m docs_agent.mcp_server
+claude mcp list        # docs-agent should show as Connected
+```
+
+On Windows, for example:
+
+```bash
+claude mcp add docs-agent --scope local -- uv --directory C:/dev/docs-agent-langgraph-mcp run python -m docs_agent.mcp_server
+```
+
+### Connect from Claude Desktop
+
+Add this to `claude_desktop_config.json` and restart the app:
+
+```json
+{
+  "mcpServers": {
+    "docs-agent": {
+      "command": "uv",
+      "args": ["--directory", "<repo>", "run", "python", "-m", "docs_agent.mcp_server"]
+    }
+  }
+}
+```
+
+### Alongside the n8n MCP
+
+The n8n workflow `integrations/n8n/workflows/02-mcp-docs-agent.json` exposes the whole agent as **one** HTTP tool (question in, answer with citations out), which suits flows and remote clients. This server exposes the **corpus** through three low-level tools so a client that reasons on its own (Claude, or the graph) can search, read the full section and decide. They solve different problems and coexist; `integrations/n8n/` is untouched. See D26.
+
 ## Tracing (optional)
 
 Off by default; with it off nothing changes. To send traces to [LangSmith](https://smith.langchain.com/) (free Developer plan), set in `.env`:
@@ -56,6 +143,17 @@ LANGSMITH_PROJECT=docs-agent
 
 Each `/ask` becomes an `ask` trace with the graph nodes and the OpenAI calls (tokens, latency, cost). The MCP server's tool calls appear as separate traces (no trace propagation over stdio). See D34 in `docs/decisiones.md`.
 
+## Demo rehearsal
+
+`scripts/demo_check.py` rehearses the 2-minute demo against the real MCP server (three moments: list sources, an OAuth2 question, an out-of-corpus Django REST Framework question), prints a pass/fail table and runs the test suite:
+
+```bash
+uv run python scripts/demo_check.py                          # moments 1-3 + pytest
+uv run python scripts/demo_check.py --q "your question" --skip-tests
+```
+
+Exit codes: `0` all good, `1` a check or pytest failed (or server/model error), `2` budget exhausted. It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`.
+
 ## Tests
 
 ```bash
@@ -63,7 +161,7 @@ docker compose up -d db
 uv run pytest -q
 ```
 
-No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
+196 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
 
 ## Example questions
 
