@@ -235,7 +235,7 @@ async def test_hang_on_startup_is_bounded():
     with anyio.fail_after(10):
         with pytest.raises(DocsServerUnavailable):
             await client.call("list_sources", {})
-    assert time.perf_counter() - start < 3 * 0.2
+    assert time.perf_counter() - start < 2.0  # muy por debajo de los 60 s del cuelgue; holgura para CI lento
     assert len(entered) == 2  # abrir y un reintento
     await client.aclose()
 

@@ -38,7 +38,7 @@ def invoke_config(question: str, **metadata: Any) -> dict:
 def record_spent(conn: psycopg.Connection, deps: AgentDeps) -> None:
     """Registra los tokens de chat ya gastados (clasificador y respuesta, solo llamadas que volvieron).
 
-    Va en un `finally`: cuenta también si el grafo falló. Los embeddings los registró el servidor MCP en el
+    Va en `invoke_recording`: cuenta también si el grafo falló. Los embeddings los registró el servidor MCP en el
     mismo kind (scope `ask`).
     """
     if deps.spent["chat_tokens"]:
