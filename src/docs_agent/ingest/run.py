@@ -8,7 +8,7 @@ from openai import OpenAI
 from docs_agent.budget import KIND_INGEST, record_usage
 from docs_agent.config import Settings, get_settings
 from docs_agent.db import connect
-from docs_agent.ingest.chunk import chunk_document
+from docs_agent.ingest.chunk import chunk_document, split_sections
 from docs_agent.ingest.embed import embed_texts
 from docs_agent.ingest.fetch import fetch_docs
 from docs_agent.ingest.store import replace_corpus
@@ -32,13 +32,14 @@ def _ingest(settings: Settings, client, conn: psycopg.Connection) -> tuple[int, 
             doc, settings.chunk_max_tokens, settings.chunk_overlap_tokens
         )
     ]
+    sections = [s for doc in docs for s in split_sections(doc)]
     estimate = sum(c.token_count for c in chunks)
     if estimate > settings.ingest_max_tokens:
         raise IngestLimitExceeded(estimate, settings.ingest_max_tokens)
     embeddings, tokens = embed_texts(
         client, [c.content for c in chunks], settings.embedding_model
     )
-    replace_corpus(conn, settings.fastapi_docs_ref, chunks, embeddings)
+    replace_corpus(conn, settings.fastapi_docs_ref, chunks, embeddings, sections)
     record_usage(conn, KIND_INGEST, tokens)
     return len(chunks), tokens
 
@@ -50,10 +51,10 @@ def run_ingest(settings: Settings, client, conn: psycopg.Connection) -> int:
 
 def main() -> None:
     settings = get_settings()
-    if not settings.openai_api_key:
+    if not settings.openai_api_key.get_secret_value():
         print("error: OPENAI_API_KEY is empty; set it in .env", file=sys.stderr)
         sys.exit(1)
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(api_key=settings.openai_api_key.get_secret_value())
     conn = connect(settings.database_url)
     try:
         n, tokens = _ingest(settings, client, conn)

@@ -34,9 +34,14 @@ class AnswerResult:
     completion_tokens: int
 
 
-def build_messages(question: str, chunks: list[RetrievedChunk]) -> list[dict]:
+def build_messages(question: str, chunks: list[RetrievedChunk], section_text: str | None = None) -> list[dict]:
+    """Contexto numerado. Con `section_text`, el fragmento [1] lleva la sección completa de `chunks[0]`
+    (misma URL y título) en lugar de su fragmento; el resto de `chunks` va tal cual."""
+    contents = [c.content for c in chunks]
+    if section_text is not None and chunks:
+        contents[0] = section_text
     context = "\n\n".join(
-        f"[{i}] {c.title}\nURL: {c.url}\n{c.content}" for i, c in enumerate(chunks, start=1)
+        f"[{i}] {c.title}\nURL: {c.url}\n{text}" for i, (c, text) in enumerate(zip(chunks, contents), start=1)
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -59,10 +64,13 @@ def validate_citations(cited: list[str], chunks: list[RetrievedChunk]) -> list[C
     return result
 
 
-def answer_question(client, question: str, chunks: list[RetrievedChunk], model: str) -> AnswerResult:
+def answer_question(
+    client, question: str, chunks: list[RetrievedChunk], model: str, section_text: str | None = None
+) -> AnswerResult:
+    """Responde con `chunks` como contexto; las citas se validan siempre contra las URLs de `chunks`."""
     resp = client.chat.completions.parse(
         model=model,
-        messages=build_messages(question, chunks),
+        messages=build_messages(question, chunks, section_text),
         response_format=LLMAnswer,
         temperature=0,
     )

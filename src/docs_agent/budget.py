@@ -4,6 +4,7 @@ import psycopg
 
 KIND_ASK = "ask"
 KIND_INGEST = "ingest"
+KIND_MCP = "mcp"
 
 _UTC_TODAY = "(now() at time zone 'utc')::date"
 

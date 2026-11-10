@@ -1,0 +1,26 @@
+{
+  "in_corpus": [
+    "¿Cómo protejo un endpoint con OAuth2 en FastAPI y obtengo el usuario actual? Muéstrame la sección exacta.",
+    "How do I declare query parameters with default values in FastAPI?",
+    "¿Cómo subo un archivo con UploadFile en FastAPI?",
+    "How do I use dependency injection with Depends in FastAPI?",
+    "¿Cómo defino un modelo de respuesta con response_model?",
+    "How do I handle CORS in a FastAPI application?",
+    "¿Cómo ejecuto tareas en segundo plano con BackgroundTasks?",
+    "How can I raise HTTP errors with HTTPException in FastAPI?",
+    "¿Cómo escribo tests de mi API con TestClient?",
+    "How do I serve static files with FastAPI?"
+  ],
+  "out_of_corpus": [
+    "¿Cómo configuro permisos en Django REST Framework?",
+    "How do I define a model with the Django ORM?",
+    "¿Cómo creo una ruta con Express.js y middleware en Node?",
+    "How do I use hooks like useEffect in React?",
+    "¿Cómo configuro un controlador en Spring Boot?",
+    "How do I make a sourdough bread at home?",
+    "¿Cuál es la capital de Australia?",
+    "How do I train for a marathon in 12 weeks?",
+    "¿Cómo se calcula el impuesto a la renta en Perú?",
+    "What is the plot of the movie Inception?"
+  ]
+}
