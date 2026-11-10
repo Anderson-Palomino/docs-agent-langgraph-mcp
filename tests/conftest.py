@@ -55,6 +55,11 @@ def _host_database_url(monkeypatch, _ensure_test_db):
 
 
 @pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
 def settings_factory():
     def make(**overrides) -> Settings:
         return Settings(_env_file=None, **overrides)
@@ -86,7 +91,7 @@ def db_conn():
 
 @pytest.fixture
 def seeded_corpus(db_conn):
-    from docs_agent.ingest.chunk import Chunk
+    from docs_agent.ingest.chunk import Chunk, Section
     from docs_agent.ingest.store import replace_corpus
     from tests.fakes import FakeOpenAI
 
@@ -96,7 +101,18 @@ def seeded_corpus(db_conn):
         Chunk("https://fastapi.tiangolo.com/tutorial/query-params/", "Query Parameters",
               "Query parameters are the key-value pairs after the ? in a URL.", 12),
     ]
-    replace_corpus(db_conn, "test-ref", chunks, [FakeOpenAI.vector_for(c.content) for c in chunks])
+    sections = [
+        Section("https://fastapi.tiangolo.com/tutorial/body/", "Request Body",
+                "# Request Body\n\nWhen you need to send data from a client to your API, you send it as a request body."),
+        Section("https://fastapi.tiangolo.com/tutorial/body/#request-body", "Body > Request Body",
+                "## Request Body { #request-body }\n\nDeclare a request body with a Pydantic model."),
+        Section("https://fastapi.tiangolo.com/tutorial/body/#import-pydantics-basemodel",
+                "Request Body > Import Pydantic's BaseModel",
+                "## Import Pydantic's `BaseModel` { #import-pydantics-basemodel }\n\nImport `BaseModel` from `pydantic`."),
+        Section("https://fastapi.tiangolo.com/tutorial/query-params/", "Query Parameters",
+                "# Query Parameters\n\nQuery parameters are the key-value pairs after the ? in a URL."),
+    ]
+    replace_corpus(db_conn, "test-ref", chunks, [FakeOpenAI.vector_for(c.content) for c in chunks], sections)
 
 
 def _make_client(db_conn, fake, monkeypatch, **settings_overrides):

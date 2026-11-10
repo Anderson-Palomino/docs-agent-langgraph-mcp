@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,11 @@ class Settings(BaseSettings):
     ask_daily_token_budget: int = 200_000
     ingest_max_tokens: int = 2_000_000
     no_answer_distance_threshold: float = 0.52  # D21
+    mcp_budget_scope: Literal["mcp", "ask"] = "mcp"  # D29
+    mcp_daily_token_budget: int = 100_000
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "docs-agent"
 
 
 @lru_cache
