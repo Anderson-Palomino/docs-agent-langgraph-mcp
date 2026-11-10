@@ -30,3 +30,13 @@ def test_answer_question_uses_temperature_zero_and_given_model():
     fake = FakeOpenAI()
     answer_question(fake, "q", CH, model="my-model")
     assert fake.calls[0]["model"] == "my-model" and fake.calls[0]["temperature"] == 0
+
+
+def test_section_text_replaces_first_fragment_and_citations_stay_against_chunks():
+    msgs = build_messages("q", CH, section_text="FULL SECTION")
+    user = msgs[1]["content"]
+    assert "[1] Body > X\nURL: https://fastapi.tiangolo.com/tutorial/body/#x\nFULL SECTION" in user
+    assert "[2] Query" in user
+    fake = FakeOpenAI(parsed=LLMAnswer(answer="x", citations=["https://made.up/", CH[1].url]))
+    r = answer_question(fake, "q", CH, model="m", section_text="FULL SECTION")
+    assert [c.url for c in r.citations] == [CH[1].url]

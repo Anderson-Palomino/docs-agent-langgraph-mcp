@@ -13,9 +13,18 @@ EMBEDDING_DIM = 1536
 
 
 class FakeOpenAI:
-    def __init__(self, parsed=None, fail: bool = False, fail_chat: bool = False) -> None:
+    def __init__(
+        self,
+        parsed=None,
+        fail: bool = False,
+        fail_chat: bool = False,
+        is_fastapi: bool = True,
+        language: str = "en",
+    ) -> None:
         self.calls: list[dict] = []
         self.parsed = parsed
+        self.is_fastapi = is_fastapi  # respuesta del clasificador (`Classification`)
+        self.language = language
         self.fail = fail
         self.fail_chat = fail_chat  # falla solo en chat con un OpenAIError que NO es APIError
         self.embeddings = SimpleNamespace(create=self._create_embeddings)
@@ -47,7 +56,12 @@ class FakeOpenAI:
         if self.fail_chat:
             raise openai.OpenAIError("could not parse response content as the length limit was reached")
         self.calls.append({"model": model, "messages": messages, "temperature": temperature})
-        parsed = self.parsed
+        from docs_agent.agent.classify import Classification
+
+        if response_format is Classification:
+            parsed = Classification(is_fastapi=self.is_fastapi, language=self.language, reason="fake")
+        else:
+            parsed = self.parsed
         if parsed is None:  # por defecto cita la primera URL que aparezca en los mensajes
             text = " ".join(m["content"] for m in messages)
             match = re.search(r"URL: (\S+)", text)
