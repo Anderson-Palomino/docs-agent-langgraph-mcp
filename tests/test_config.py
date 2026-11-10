@@ -21,3 +21,8 @@ def test_settings_repr_hides_api_key():
     s = Settings(_env_file=None, openai_api_key="sk-secret")
     assert "sk-secret" not in repr(s)
     assert s.openai_api_key.get_secret_value() == "sk-secret"
+
+
+def test_threshold_setting_from_env(monkeypatch):
+    monkeypatch.setenv("NO_ANSWER_DISTANCE_THRESHOLD", "0.5")
+    assert Settings(_env_file=None).no_answer_distance_threshold == 0.5
