@@ -241,6 +241,31 @@ async def test_hang_on_startup_is_bounded():
 
 
 @pytest.mark.anyio
+async def test_cancel_during_startup_closes_session():
+    """Cancelar la petición mientras el servidor arranca no deja la tarea de la sesión colgada (ni su proceso)."""
+    entered, exited = [], []
+
+    @asynccontextmanager
+    async def hanging():
+        entered.append(1)
+        try:
+            await anyio.sleep(60)
+            yield None
+        finally:
+            exited.append(1)
+
+    client = DocsMCPClient(hanging, call_timeout_s=30)
+    task = asyncio.create_task(client.call("list_sources", {}))
+    while not entered:
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert exited == [1]
+    await client.aclose()
+
+
+@pytest.mark.anyio
 async def test_closed_client_never_reopens():
     connect = FakeConnect()
     client = DocsMCPClient(connect, call_timeout_s=1)

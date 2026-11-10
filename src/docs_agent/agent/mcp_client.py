@@ -173,9 +173,11 @@ class DocsMCPClient:
                 # Arrancar el servidor también queda acotado: un proceso colgado al abrir cuenta como muerto.
                 with anyio.fail_after(self.call_timeout_s):
                     await session.start()
-            except Exception as exc:
+            except BaseException as exc:
+                # También ante `CancelledError` (la petición se canceló mientras arrancaba): `close` va blindado
+                # contra la cancelación, así que la tarea de la sesión (y el proceso) no queda colgada.
                 await session.close()
-                if isinstance(exc, TimeoutError) or _is_dead(exc):
+                if isinstance(exc, TimeoutError) or (isinstance(exc, Exception) and _is_dead(exc)):
                     raise _ProcessDied() from exc
                 raise
             self._session = session
