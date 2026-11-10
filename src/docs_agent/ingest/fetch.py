@@ -2,6 +2,7 @@
 
 import io
 import re
+import sys
 import tarfile
 import unicodedata
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 import httpx
+
+from docs_agent.ingest.includes import resolve_includes
 
 BASE_URL = "https://fastapi.tiangolo.com/"
 TARBALL_URL = "https://codeload.github.com/fastapi/fastapi/tar.gz/refs/tags/{ref}"
@@ -27,6 +30,8 @@ EXCLUDED: tuple[str, ...] = (
 )
 
 _DOCS_MARKER = "/docs/en/docs/"
+_SRC_MARKER = "/docs_src/"
+_INCLUDE_COUNT = re.compile(r"\{\*\s*\S+\s*.*?\s*\*\}")
 _ATTR_ID = re.compile(r"\s*\{\s*#([^\s}]+)[^}]*\}\s*$")
 
 
@@ -68,9 +73,21 @@ def _is_excluded(rel_path: str) -> bool:
 
 def _docs_from_tarball(data: bytes) -> list[DocFile]:
     docs: list[DocFile] = []
+    src_files: dict[str, str] = {}
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
         for member in tar:
-            if not member.isfile() or not member.name.endswith(".md"):
+            if not member.isfile():
+                continue
+            top, sep, src_rel = member.name.partition(_SRC_MARKER)
+            if sep and "/" not in top:
+                f = tar.extractfile(member)
+                if f is not None:
+                    try:
+                        src_files[src_rel] = f.read().decode("utf-8")
+                    except UnicodeDecodeError:
+                        pass
+                continue
+            if not member.name.endswith(".md"):
                 continue
             top, sep, rel_path = member.name.partition(_DOCS_MARKER)
             # Solo el directorio raíz del tarball puede preceder a docs/en/docs/
@@ -81,7 +98,19 @@ def _docs_from_tarball(data: bytes) -> list[DocFile]:
                 continue
             text = f.read().decode("utf-8")
             docs.append(DocFile(rel_path, path_to_url(rel_path), text))
-    return sorted(docs, key=lambda d: d.rel_path)
+    resolved = 0
+    missing_total: list[str] = []
+    out: list[DocFile] = []
+    for d in docs:
+        text, missing = resolve_includes(d.text, src_files)
+        resolved += len(_INCLUDE_COUNT.findall(d.text)) - len(missing)
+        missing_total.extend(missing)
+        out.append(DocFile(d.rel_path, d.url, text))
+    print(
+        f"resolved {resolved} includes, {len(missing_total)} missing",
+        file=sys.stderr,
+    )
+    return sorted(out, key=lambda d: d.rel_path)
 
 
 def fetch_docs(ref: str, cache_dir: Path = Path("data")) -> list[DocFile]:
