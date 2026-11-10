@@ -1,8 +1,7 @@
 """API HTTP: POST /ask (grafo del agente sobre el servidor MCP, D30-D33) y GET /health."""
 
 import asyncio
-import warnings
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -19,7 +18,7 @@ from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
-from docs_agent.tracing import configure_tracing
+from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
 OPENAI_TIMEOUT_S = 30
 OPENAI_MAX_RETRIES = 2
@@ -30,10 +29,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Un cliente MCP por proceso; perezoso: el servidor stdio (scope `ask`, D29) arranca en la primera llamada.
 
     El tracing (D34) se configura antes de crear el cliente: el servidor stdio hereda `os.environ` y con él
-    las variables LANGSMITH_*.
+    las variables LANGSMITH_*. `wrap_openai` se importa aquí, una sola vez, y no en cada petición.
     """
     settings = get_settings()
     app.state.tracing = configure_tracing(settings)
+    app.state.openai_wrapper = load_openai_wrapper() if app.state.tracing else None
     docs_tools = DocsMCPClient(stdio_connect(settings, "ask"), settings.mcp_call_timeout_s)
     app.state.docs_tools = docs_tools
     try:
@@ -56,21 +56,14 @@ def get_conn() -> Iterator[psycopg.Connection]:
         conn.close()
 
 
-def make_openai(tracing: bool = False) -> OpenAI:
+def make_openai(wrapper: Callable[[OpenAI], OpenAI] | None = None) -> OpenAI:
     """Cliente OpenAI síncrono; con tracing, envuelto con `wrap_openai` (corridas LLM hijas con tokens, D34)."""
     client = OpenAI(api_key=get_settings().openai_api_key.get_secret_value(), timeout=OPENAI_TIMEOUT_S, max_retries=OPENAI_MAX_RETRIES)
-    if not tracing:
-        return client
-    # Import perezoso: con tracing apagado no se carga `langsmith.wrappers`, cuyo `__init__` (0.14.17) importa
-    # un módulo deprecado y emite un DeprecationWarning ajeno a este código.
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=r"langsmith\.wrappers\._openai_agents is deprecated", category=DeprecationWarning)
-        from langsmith.wrappers import wrap_openai
-    return wrap_openai(client)
+    return wrapper(client) if wrapper else client
 
 
 def get_openai(request: Request) -> OpenAI:
-    return make_openai(getattr(request.app.state, "tracing", False))
+    return make_openai(getattr(request.app.state, "openai_wrapper", None))
 
 
 def get_docs_tools(request: Request) -> Any:

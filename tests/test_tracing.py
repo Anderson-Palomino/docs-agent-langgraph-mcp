@@ -1,19 +1,7 @@
 import os
 
-import pytest
-
 from docs_agent.tracing import configure_tracing
-
-VARS = ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT")
-
-
-@pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
-    # setenv registra el valor original para restaurarlo al final, también si no existía:
-    # así lo que escriba configure_tracing en os.environ no se filtra a otros tests.
-    for v in VARS:
-        monkeypatch.setenv(v, "")
-        monkeypatch.delenv(v)
+from tests.conftest import LANGSMITH_VARS as VARS  # el autouse `_tracing_off` de conftest los limpia
 
 
 def test_tracing_off_by_default(settings_factory):
@@ -64,9 +52,9 @@ def test_api_startup_without_tracing_does_not_wrap_openai(monkeypatch):
 
     _lifespan_settings(monkeypatch)
     with TestClient(api.app):
-        assert api.app.state.tracing is False
+        assert api.app.state.tracing is False and api.app.state.openai_wrapper is None
         assert "LANGSMITH_TRACING" not in os.environ
-        client = api.make_openai(api.app.state.tracing)
+        client = api.make_openai(api.app.state.openai_wrapper)
         assert not hasattr(client.chat.completions.parse, "__wrapped__")  # cliente OpenAI tal cual
 
 
@@ -82,7 +70,7 @@ def test_api_startup_with_tracing_wraps_openai(monkeypatch):
     with TestClient(api.app):
         assert api.app.state.tracing is True
         assert os.environ["LANGSMITH_TRACING"] == "true" and os.environ["LANGSMITH_PROJECT"] == "p1"
-        client = api.make_openai(api.app.state.tracing)
+        client = api.make_openai(api.app.state.openai_wrapper)
         assert hasattr(client.chat.completions.parse, "__wrapped__")  # functools.wraps de wrap_openai
         assert client.timeout == 30 and client.max_retries == 2
 
@@ -115,3 +103,47 @@ def test_ask_works_without_tracing(client, seeded_corpus, recwarn):
     r = client.post("/ask", json={"question": "How do I declare a body?"})
     assert r.status_code == 200 and r.json()["route"] == "answer"
     assert not [w for w in recwarn if "langsmith" in f"{w.filename} {w.message}".lower()]
+
+
+def _parsed_completion():
+    """Un `ParsedChatCompletion` real del SDK (cliente OpenAI con transporte simulado, sin red)."""
+    import json
+
+    import httpx
+    from openai import OpenAI
+
+    from docs_agent.agent.classify import Classification
+
+    body = {
+        "id": "c1", "object": "chat.completion", "created": 0, "model": "m",
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {
+            "role": "assistant", "content": json.dumps({"is_fastapi": True, "language": "en", "reason": "x"})}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    client = OpenAI(api_key="sk-test", http_client=httpx.Client(transport=transport))
+    return client.chat.completions.parse(
+        model="m", messages=[{"role": "user", "content": "q"}], response_format=Classification
+    )
+
+
+def test_parsed_serializer_warning_is_filtered_only_with_tracing_filters():
+    """`wrap_openai` hace `model_dump()` de la respuesta de `parse`; sin filtro pydantic avisa por `parsed`.
+    Con el filtro de tracing ese aviso desaparece y cualquier otro UserWarning sigue saliendo."""
+    import warnings
+
+    from docs_agent.tracing import install_tracing_warning_filters
+
+    resp = _parsed_completion()
+    with warnings.catch_warnings(record=True) as before:
+        warnings.simplefilter("always")
+        resp.model_dump()
+    assert any("field_name='parsed'" in str(w.message) for w in before)  # el aviso existe sin el filtro
+
+    with warnings.catch_warnings(record=True) as after:
+        warnings.simplefilter("always")
+        install_tracing_warning_filters()
+        resp.model_dump()
+        warnings.warn("Pydantic serializer warnings: otro aviso", UserWarning)
+        warnings.warn("cualquier otro aviso", UserWarning)
+    assert [str(w.message) for w in after] == ["Pydantic serializer warnings: otro aviso", "cualquier otro aviso"]
