@@ -302,9 +302,8 @@ def main(argv: list[str] | None = None) -> int:
                 console.print(f"[red]{exc}[/]")
                 return exc.exit_code
     except psycopg.Error as exc:
-        # Una línea, sin la cadena de conexión: solo el tipo y la primera línea del mensaje.
-        first_line = (str(exc).strip().splitlines() or [""])[0]
-        console.print(Text(f"Error de base de datos ({type(exc).__name__}): {first_line}", style="red"))
+        # Solo el tipo: el mensaje de libpq puede repetir parte de DATABASE_URL (p. ej. si está mal formada).
+        console.print(Text(f"Error de base de datos ({type(exc).__name__}). Revisa que Postgres esté arriba y DATABASE_URL.", style="red"))
         return EXIT_FAILED
 
     summary = {
