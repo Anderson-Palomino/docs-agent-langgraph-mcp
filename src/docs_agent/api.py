@@ -1,5 +1,6 @@
 """API HTTP: POST /ask (grafo del agente sobre el servidor MCP, D30-D33) y GET /health."""
 
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -10,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from openai import OpenAI
 from pydantic import BaseModel, field_validator, model_serializer
 
-from docs_agent.agent.graph import AgentDeps, _is_budget_error, build_graph
+from docs_agent.agent.graph import AgentDeps, build_graph, is_budget_error
 from docs_agent.agent.mcp_client import DocsMCPClient, DocsServerUnavailable, DocsToolError, stdio_connect
 from docs_agent.budget import KIND_ASK, BudgetExceeded, check_budget, record_usage
 from docs_agent.config import get_settings
@@ -99,10 +100,10 @@ async def ask(
     if not settings.openai_api_key.get_secret_value():
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
     try:
-        check_budget(conn, KIND_ASK, settings.ask_daily_token_budget)
+        await asyncio.to_thread(check_budget, conn, KIND_ASK, settings.ask_daily_token_budget)
     except BudgetExceeded:
         raise HTTPException(status_code=429, detail="Daily token budget exhausted")
-    if corpus_size(conn, settings.fastapi_docs_ref) == 0:
+    if await asyncio.to_thread(corpus_size, conn, settings.fastapi_docs_ref) == 0:
         raise HTTPException(status_code=503, detail="Corpus is empty: run the ingest command first")
 
     deps = AgentDeps(
@@ -118,16 +119,19 @@ async def ask(
     except DocsServerUnavailable:  # incluye DocsToolTimeout
         raise HTTPException(status_code=503, detail="Docs server unavailable")
     except DocsToolError as exc:
-        if _is_budget_error(exc):
+        if is_budget_error(exc):
             raise HTTPException(status_code=429, detail="Daily token budget exhausted")
         raise HTTPException(status_code=502, detail="Docs tool error")
     except openai.OpenAIError:
         raise HTTPException(status_code=502, detail="Upstream model error")
+    finally:
+        # Lo que la API ya gastó (clasificador y respuesta, solo llamadas que volvieron) cuenta siempre, también
+        # si la petición falla; los embeddings los registró el servidor MCP en el mismo kind (scope `ask`).
+        if deps.spent["chat_tokens"]:
+            await asyncio.to_thread(record_usage, conn, KIND_ASK, deps.spent["chat_tokens"])
 
     usage = state["usage"]
     classifier_tokens = usage["classifier_prompt_tokens"] + usage["classifier_completion_tokens"]
-    # Solo lo que gastó la API; los embeddings ya los registró el servidor MCP en el mismo kind (scope `ask`).
-    record_usage(conn, KIND_ASK, classifier_tokens + usage["prompt_tokens"] + usage["completion_tokens"])
     return AskResponse(
         answer=state["answer"],
         citations=state["citations"],

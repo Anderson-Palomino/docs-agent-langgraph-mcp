@@ -144,7 +144,8 @@ def test_ask_docs_server_unavailable_503(make_client, seeded_corpus, db_conn):
     c = make_client(FakeOpenAI(), tools=_RaisingTools(DocsServerUnavailable("MCP server unavailable calling search_docs")))
     r = c.post("/ask", json={"question": "hi"})
     assert r.status_code == 503 and r.json()["detail"] == "Docs server unavailable"
-    assert tokens_used_today(db_conn, KIND_ASK) == 0
+    # El clasificador ya gastó (100 + 20): se registra aunque la petición falle; un MCP caído no gasta gratis.
+    assert tokens_used_today(db_conn, KIND_ASK) == 120
 
 
 def test_ask_docs_tool_timeout_503(make_client, seeded_corpus):
@@ -156,7 +157,7 @@ def test_ask_docs_tool_timeout_503(make_client, seeded_corpus):
     assert r.status_code == 503 and r.json()["detail"] == "Docs server unavailable"
 
 
-def test_ask_budget_exhausted_in_tool_429_no_usage(make_client, seeded_corpus, db_conn):
+def test_ask_budget_exhausted_in_tool_429_records_classifier_usage(make_client, seeded_corpus, db_conn):
     from docs_agent.agent.mcp_client import DocsToolError
     from tests.fakes import FakeOpenAI
 
@@ -167,7 +168,7 @@ def test_ask_budget_exhausted_in_tool_429_no_usage(make_client, seeded_corpus, d
     r = c.post("/ask", json={"question": "hi"})
     assert r.status_code == 429 and r.json()["detail"] == "Daily token budget exhausted"
     assert tools.calls and tools.calls[0][0] == "search_docs"
-    assert tokens_used_today(db_conn, KIND_ASK) == 0
+    assert tokens_used_today(db_conn, KIND_ASK) == 120  # solo el clasificador, que sí se gastó
 
 
 def test_ask_other_tool_error_502(make_client, seeded_corpus, db_conn):
@@ -177,7 +178,7 @@ def test_ask_other_tool_error_502(make_client, seeded_corpus, db_conn):
     c = make_client(FakeOpenAI(), tools=_RaisingTools(DocsToolError("Error executing tool search_docs: Database unavailable")))
     r = c.post("/ask", json={"question": "hi"})
     assert r.status_code == 502 and r.json()["detail"] == "Docs tool error"
-    assert tokens_used_today(db_conn, KIND_ASK) == 0
+    assert tokens_used_today(db_conn, KIND_ASK) == 120
 
 
 def test_ask_usage_has_classifier_tokens(client, seeded_corpus, db_conn):
@@ -243,3 +244,21 @@ def test_lifespan_builds_stdio_params_with_ask_scope(monkeypatch):
         assert built[0][1].env["MCP_BUDGET_SCOPE"] == "ask"
         assert closed == []
     assert closed == [True]
+
+
+def test_ask_answer_failure_records_only_classifier(make_client, seeded_corpus, db_conn):
+    """Falla la llamada de respuesta: se registra el clasificador y los embeddings (servidor), no la respuesta."""
+    from tests.fakes import FakeOpenAI
+
+    class FailOnSecondChat(FakeOpenAI):
+        def _parse_chat(self, model, messages, response_format, temperature=None):
+            if any("messages" in c for c in self.calls):
+                raise __import__("openai").OpenAIError("boom on answer")
+            return super()._parse_chat(model, messages, response_format, temperature)
+
+    fake = FailOnSecondChat()
+    r = make_client(fake).post("/ask", json={"question": "How do I declare a body?"})
+    assert r.status_code == 502 and r.json()["detail"] == "Upstream model error"
+    embedding_tokens = sum(len(c["input"][0].split()) for c in fake.calls if "input" in c)
+    assert embedding_tokens > 0
+    assert tokens_used_today(db_conn, KIND_ASK) == 120 + embedding_tokens

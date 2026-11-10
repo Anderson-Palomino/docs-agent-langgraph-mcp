@@ -6,7 +6,7 @@ síncronas y van en `asyncio.to_thread` para no bloquear el event loop.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -52,6 +52,9 @@ class AgentDeps:
     tools: Any  # objeto con `async call(tool, args) -> dict`, p. ej. `DocsMCPClient`
     settings: Settings
     check_budget: Callable[[], None]  # lanza `BudgetExceeded`
+    # Tokens de chat que ya se gastaron (cada llamada que volvió), fuera del estado: si el grafo falla después,
+    # quien lo invoca igual puede registrarlos en el presupuesto. Los embeddings los registra el servidor MCP.
+    spent: dict[str, int] = field(default_factory=lambda: {"chat_tokens": 0})
 
 
 def _empty_usage() -> dict[str, int]:
@@ -88,7 +91,7 @@ def _cap_section(text: str) -> str:
     return text[:SECTION_MAX_CHARS] + SECTION_TRUNCATION_MARK
 
 
-def _is_budget_error(exc: Exception) -> bool:
+def is_budget_error(exc: Exception) -> bool:
     return isinstance(exc, DocsToolError) and "budget" in str(exc).lower()
 
 
@@ -100,6 +103,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         c, prompt_tokens, completion_tokens = await asyncio.to_thread(
             classify_question, deps.openai, state["question"], settings.chat_model
         )
+        deps.spent["chat_tokens"] += prompt_tokens + completion_tokens
         usage = _empty_usage()
         usage["classifier_prompt_tokens"] = prompt_tokens
         usage["classifier_completion_tokens"] = completion_tokens
@@ -135,7 +139,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
             section_text = _cap_section(section["content"])
             tools_used.append("get_section")
         except (DocsToolError, DocsServerUnavailable) as exc:  # DocsToolTimeout es DocsServerUnavailable
-            if _is_budget_error(exc):
+            if is_budget_error(exc):
                 raise
             section, section_text = None, None  # responder con los snippets de search_docs
         result = await asyncio.to_thread(
@@ -146,6 +150,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
             settings.chat_model,
             section_text,
         )
+        deps.spent["chat_tokens"] += result.prompt_tokens + result.completion_tokens
         usage = {
             **state["usage"],
             "prompt_tokens": result.prompt_tokens,

@@ -290,3 +290,21 @@ def test_mermaid_has_all_nodes():
     text = mermaid(graph)
     for node in ("classify", "search", "evaluate", "answer", "no_se"):
         assert node in text
+
+
+@pytest.mark.anyio
+async def test_spent_chat_tokens_accumulate_outside_state_even_on_failure():
+    """`deps.spent` cuenta cada llamada de chat que volvió, aunque el grafo falle después (Task 9 fix)."""
+    graph, deps = make(tools=FakeTools(raises={"search_docs": DocsServerUnavailable("down")}))
+    with pytest.raises(DocsServerUnavailable):
+        await graph.ainvoke({"question": "q"})
+    assert deps.spent == {"chat_tokens": 120}
+
+    graph, deps = make()
+    await graph.ainvoke({"question": "q"})
+    assert deps.spent == {"chat_tokens": 240}  # clasificador + respuesta
+
+    graph, deps = make(openai=FakeOpenAI(fail=True))
+    with pytest.raises(Exception):
+        await graph.ainvoke({"question": "q"})
+    assert deps.spent == {"chat_tokens": 0}  # la llamada que falló no cuenta
