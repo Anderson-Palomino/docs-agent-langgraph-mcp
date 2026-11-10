@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     database_url: str = "postgresql://docs:docs@127.0.0.1:5434/docs"
+    test_database_url: str = "postgresql://docs:docs@127.0.0.1:5434/docs_test"
     chat_model: str = "gpt-4.1-mini"
     embedding_model: str = "text-embedding-3-small"
     fastapi_docs_ref: str = "0.162.0"

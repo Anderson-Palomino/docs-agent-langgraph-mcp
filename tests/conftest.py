@@ -1,17 +1,42 @@
 import os
+from pathlib import Path
 
 import pytest
 
 from docs_agent.config import Settings
 
 
+def _test_database_url() -> str:
+    return os.environ.get("TEST_DATABASE_URL") or Settings(_env_file=None).test_database_url
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_test_db():
+    """Create the `docs_test` database if missing and apply db/init.sql. Never touches `docs`."""
+    import psycopg
+    import psycopg.sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    url = _test_database_url()
+    dbname = conninfo_to_dict(url)["dbname"]
+    try:
+        with psycopg.connect(make_conninfo(url, dbname="postgres"), autocommit=True, connect_timeout=5) as admin:
+            exists = admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,)).fetchone()
+            if not exists:
+                admin.execute(psycopg.sql.SQL("CREATE DATABASE {}").format(psycopg.sql.Identifier(dbname)))
+        init_sql = (Path(__file__).resolve().parent.parent / "db" / "init.sql").read_text(encoding="utf-8")
+        with psycopg.connect(url, autocommit=True, connect_timeout=5) as conn:
+            conn.execute(init_sql)
+    except psycopg.OperationalError:
+        pass  # Postgres down: integration tests skip via db_conn
+
+
 @pytest.fixture(autouse=True)
-def _host_database_url(monkeypatch):
-    """Tests ignore DATABASE_URL from .env: use the code default unless explicitly exported."""
+def _host_database_url(monkeypatch, _ensure_test_db):
+    """Every test uses the test database, never the demo one (ignores DATABASE_URL from .env/env)."""
     from docs_agent.config import get_settings
 
-    if "DATABASE_URL" not in os.environ:
-        monkeypatch.setenv("DATABASE_URL", Settings(_env_file=None).database_url)
+    monkeypatch.setenv("DATABASE_URL", _test_database_url())
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
