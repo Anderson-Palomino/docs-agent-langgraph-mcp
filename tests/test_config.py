@@ -23,6 +23,12 @@ def test_settings_repr_hides_api_key():
     assert s.openai_api_key.get_secret_value() == "sk-secret"
 
 
+def test_settings_repr_hides_langsmith_key():
+    s = Settings(_env_file=None, langsmith_api_key="lsv2-secret")
+    assert "lsv2-secret" not in repr(s) and "lsv2-secret" not in str(s)
+    assert s.langsmith_api_key.get_secret_value() == "lsv2-secret"
+
+
 def test_threshold_setting_from_env(monkeypatch):
     monkeypatch.setenv("NO_ANSWER_DISTANCE_THRESHOLD", "0.5")
     assert Settings(_env_file=None).no_answer_distance_threshold == 0.5

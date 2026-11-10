@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     mcp_daily_token_budget: int = 100_000
     mcp_call_timeout_s: float = 15.0  # D30
     langsmith_tracing: bool = False
-    langsmith_api_key: str = ""
+    langsmith_api_key: SecretStr = SecretStr("")
     langsmith_project: str = "docs-agent"
 
 
