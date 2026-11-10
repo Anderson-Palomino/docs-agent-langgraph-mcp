@@ -115,18 +115,66 @@ def seeded_corpus(db_conn):
     replace_corpus(db_conn, "test-ref", chunks, [FakeOpenAI.vector_for(c.content) for c in chunks], sections)
 
 
-def _make_client(db_conn, fake, monkeypatch, **settings_overrides):
+class InProcessDocsTools:
+    """`get_docs_tools` de los tests de `/ask`: las herramientas puras de `tools.py` en proceso contra `db_conn`.
+
+    Imita lo que hace el servidor MCP lanzado por la API (scope `ask`): los errores esperados llegan al grafo
+    como `DocsToolError` con el mensaje del error, igual que por MCP.
+    """
+
+    def __init__(self, conn, openai_client, settings):
+        self.conn = conn
+        self.openai = openai_client
+        self.settings = settings.model_copy(update={"mcp_budget_scope": "ask"})
+        self.calls: list[tuple[str, dict]] = []
+
+    async def call(self, tool: str, args: dict) -> dict:
+        import openai
+
+        from docs_agent.agent.mcp_client import DocsToolError
+        from docs_agent.budget import BudgetExceeded
+        from docs_agent.mcp_server import tools
+
+        self.calls.append((tool, args))
+        try:
+            if tool == "search_docs":
+                return tools.search_docs(self.conn, self.openai, self.settings, args["query"], args.get("k", 5))
+            if tool == "get_section":
+                return tools.get_section(self.conn, self.settings, args["url"])
+            if tool == "list_sources":
+                return tools.list_sources(self.conn, self.settings)
+        except (LookupError, BudgetExceeded) as exc:
+            raise DocsToolError(str(exc)) from exc
+        except openai.OpenAIError as exc:
+            raise DocsToolError("Upstream model error") from exc
+        raise DocsToolError(f"Unknown tool: {tool}")
+
+
+# Los vectores de `FakeOpenAI` son aleatorios por hash: una pregunta distinta del texto de un fragmento queda a
+# distancia ~1.0. Los tests de `/ask` heredados (semana 1) no fijan umbral, así que por defecto se abre para que
+# sigan yendo por la ruta `answer`; los que prueban el umbral real (D21) lo pasan explícito.
+OPEN_THRESHOLD = 2.0
+
+
+def _make_client(db_conn, fake, monkeypatch, tools=None, **settings_overrides):
     from fastapi.testclient import TestClient
 
     from docs_agent import api
-    from docs_agent.api import app, get_conn, get_openai
+    from docs_agent.api import app, get_conn, get_docs_tools, get_openai
     from docs_agent.config import Settings
 
-    overrides = {"openai_api_key": "sk-test", "fastapi_docs_ref": "test-ref", **settings_overrides}
+    overrides = {
+        "openai_api_key": "sk-test",
+        "fastapi_docs_ref": "test-ref",
+        "no_answer_distance_threshold": OPEN_THRESHOLD,
+        **settings_overrides,
+    }
     settings = Settings(_env_file=None, **overrides)
     monkeypatch.setattr(api, "get_settings", lambda: settings)
+    docs_tools = tools if tools is not None else InProcessDocsTools(db_conn, fake, settings)
     app.dependency_overrides[get_conn] = lambda: db_conn
     app.dependency_overrides[get_openai] = lambda: fake
+    app.dependency_overrides[get_docs_tools] = lambda: docs_tools
     return TestClient(app)
 
 
@@ -152,8 +200,8 @@ def client_with_failing_openai(db_conn, monkeypatch):
 def make_client(db_conn, monkeypatch):
     from docs_agent.api import app
 
-    def make(fake, **settings_overrides):
-        return _make_client(db_conn, fake, monkeypatch, **settings_overrides)
+    def make(fake, tools=None, **settings_overrides):
+        return _make_client(db_conn, fake, monkeypatch, tools=tools, **settings_overrides)
 
     yield make
     app.dependency_overrides.clear()
