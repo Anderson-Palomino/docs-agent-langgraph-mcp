@@ -60,7 +60,7 @@ def search_docs(
     """Top-k fragmentos de la versión indexada. Lanza `BudgetExceeded` si el presupuesto del scope se agotó.
 
     `include_content=True` agrega a cada resultado el fragmento completo (`content`): lo pide el grafo para
-    armar el contexto de la respuesta (D31). Por defecto solo viaja el snippet, para no inflar el contexto
+    armar el contexto de la respuesta (D32). Por defecto solo viaja el snippet, para no inflar el contexto
     de un cliente como Claude.
     """
     k = clamp_k(k)
