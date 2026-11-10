@@ -37,6 +37,17 @@ def test_main_exits_1_on_invalid_scope():
     assert proc.stdout == ""
 
 
+@pytest.mark.parametrize("call_timeout", [15.0, 6.0, 30.0])
+def test_openai_limits_fit_inside_mcp_call_timeout(call_timeout):
+    from docs_agent.mcp_server.__main__ import OPENAI_RETRY_BACKOFF_S, openai_limits
+
+    timeout_s, max_retries = openai_limits(Settings(_env_file=None, mcp_call_timeout_s=call_timeout))
+    assert max_retries == 1
+    assert timeout_s == pytest.approx(call_timeout / 3)
+    worst = (max_retries + 1) * timeout_s + max_retries * OPENAI_RETRY_BACKOFF_S
+    assert worst < call_timeout
+
+
 def test_instructions_text():
     assert INSTRUCTIONS.format(ref="0.162.0").startswith(
         "Tools over the indexed FastAPI documentation (version 0.162.0). Answer ONLY with what these tools"
