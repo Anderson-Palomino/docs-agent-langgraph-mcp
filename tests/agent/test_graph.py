@@ -227,7 +227,7 @@ async def test_insufficient_context_answers_in_classifier_language():
     "exc",
     [DocsToolError("unknown url"), DocsToolTimeout("get_section timed out"), DocsServerUnavailable("dead")],
 )
-async def test_get_section_failure_falls_back_to_full_chunks(exc):
+async def test_get_section_failure_falls_back_to_full_chunks(exc, caplog):
     tools = FakeTools(raises={"get_section": exc})
     graph, deps = make(tools=tools)
     out = await graph.ainvoke({"question": "q"})
@@ -236,6 +236,9 @@ async def test_get_section_failure_falls_back_to_full_chunks(exc):
     assert out["section"] is None
     joined = " ".join(m["content"] for m in chat_calls(deps.openai)[-1]["messages"])
     assert "FULL BODY CHUNK" in joined and "FULL QUERY CHUNK" in joined
+    warnings = [r for r in caplog.records if r.levelname == "WARNING" and r.name == "docs_agent.agent.graph"]
+    assert len(warnings) == 1
+    assert BODY in warnings[0].getMessage() and type(exc).__name__ in warnings[0].getMessage()
 
 
 @pytest.mark.anyio
@@ -281,6 +284,18 @@ async def test_classifier_reason_kept_in_state():
     out = await graph.ainvoke({"question": "q"})
     assert out["classifier_reason"] == "fake"
     assert out["reason"] == "out_of_domain"
+
+
+@pytest.mark.anyio
+async def test_check_budget_runs_off_the_event_loop():
+    import threading
+
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    graph, _ = make(check_budget=lambda: seen.append(threading.get_ident()))
+    await graph.ainvoke({"question": "q"})
+    assert len(seen) == 2  # classify y answer
+    assert all(t != loop_thread for t in seen)
 
 
 def test_chunks_use_full_content_not_snippet():

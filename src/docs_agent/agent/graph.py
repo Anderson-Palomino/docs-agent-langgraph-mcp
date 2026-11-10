@@ -1,11 +1,13 @@
 """Grafo del agente: clasificar → buscar → evaluar → responder | no_se (D31, D32).
 
 Cada nodo devuelve solo las claves que cambia; LangGraph las mezcla en el estado.
-Las herramientas se consumen por MCP (`DocsMCPClient`, D30); las llamadas OpenAI son
-síncronas y van en `asyncio.to_thread` para no bloquear el event loop.
+Las herramientas se consumen por MCP (`DocsMCPClient`, D30); las llamadas OpenAI y el chequeo
+de presupuesto (`check_budget`, una consulta a Postgres) son síncronos y van en `asyncio.to_thread` para no
+bloquear el event loop.
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, TypedDict
 
@@ -17,6 +19,8 @@ from docs_agent.agent.mcp_client import DocsServerUnavailable, DocsToolError
 from docs_agent.config import Settings
 from docs_agent.rag.answer import Citation, answer_question
 from docs_agent.rag.retrieve import RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 NO_SE_ANSWERS = {
     "en": "I couldn't find this in the indexed FastAPI documentation, so I won't guess.",
@@ -100,7 +104,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
     settings = deps.settings
 
     async def classify(state: AgentState) -> AgentState:
-        deps.check_budget()
+        await asyncio.to_thread(deps.check_budget)
         c, prompt_tokens, completion_tokens = await asyncio.to_thread(
             classify_question, deps.openai, state["question"], settings.chat_model
         )
@@ -134,7 +138,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         return {"reason": None if enough else "insufficient_context"}
 
     async def answer(state: AgentState) -> AgentState:
-        deps.check_budget()
+        await asyncio.to_thread(deps.check_budget)
         results = state["results"]
         tools_used = list(state["tools_used"])
         try:
@@ -144,6 +148,11 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         except (DocsToolError, DocsServerUnavailable) as exc:  # DocsToolTimeout es DocsServerUnavailable
             if is_budget_error(exc):
                 raise
+            logger.warning(
+                "get_section failed for %s (%s); answering with search_docs chunks only",
+                results[0]["url"],
+                type(exc).__name__,
+            )
             section, section_text = None, None  # responder con los fragmentos completos de search_docs
         result = await asyncio.to_thread(
             answer_question,
