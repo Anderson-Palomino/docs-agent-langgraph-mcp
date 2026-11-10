@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr = SecretStr("")
     langsmith_project: str = "docs-agent"
+    # USD por millón de tokens: precios públicos de gpt-4.1-mini y text-embedding-3-small (`pricing.py`).
+    price_chat_input_per_mtok: float = 0.40
+    price_chat_output_per_mtok: float = 1.60
+    price_embedding_per_mtok: float = 0.02
 
 
 @lru_cache
