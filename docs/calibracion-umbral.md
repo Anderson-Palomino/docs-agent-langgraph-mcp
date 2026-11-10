@@ -24,3 +24,5 @@ Mejor distancia coseno (k=1) de 20 preguntas contra `0.162.0` (modelo `text-embe
 | How do I train for a marathon in 12 weeks? | out_of_corpus | 0.8205 | https://fastapi.tiangolo.com/deployment/docker/#dockerfile |
 | ¿Cuál es la capital de Australia? | out_of_corpus | 0.8526 | https://fastapi.tiangolo.com/deployment/manually/#asgi-servers |
 | ¿Cómo se calcula el impuesto a la renta en Perú? | out_of_corpus | 0.8715 | https://fastapi.tiangolo.com/advanced/stream-data/#simulate-a-file |
+
+Umbral elegido: 0.52 (ver D21).

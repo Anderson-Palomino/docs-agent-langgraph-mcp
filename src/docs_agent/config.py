@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     chunk_overlap_tokens: int = 100
     ask_daily_token_budget: int = 200_000
     ingest_max_tokens: int = 2_000_000
-    no_answer_distance_threshold: float = 0.5  # provisional — calibrated in D21
+    no_answer_distance_threshold: float = 0.52  # D21
 
 
 @lru_cache
