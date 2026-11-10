@@ -54,6 +54,19 @@ def _host_database_url(monkeypatch, _ensure_test_db):
     get_settings.cache_clear()
 
 
+LANGSMITH_VARS = ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT")
+
+
+@pytest.fixture(autouse=True)
+def _tracing_off(monkeypatch):
+    """Tracing apagado en todos los tests aunque el shell del desarrollador exporte LANGSMITH_* (ningún test
+    habla con LangSmith). setenv+delenv: monkeypatch restaura el valor original al final, también si no existía,
+    así lo que escriba `configure_tracing` en `os.environ` durante un test no se filtra a otros."""
+    for v in LANGSMITH_VARS:
+        monkeypatch.setenv(v, "")
+        monkeypatch.delenv(v)
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"

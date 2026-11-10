@@ -1,6 +1,7 @@
 """API HTTP: POST /ask (grafo del agente sobre el servidor MCP, D30-D33) y GET /health."""
 
 import asyncio
+import warnings
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -18,6 +19,7 @@ from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
+from docs_agent.tracing import configure_tracing
 
 OPENAI_TIMEOUT_S = 30
 OPENAI_MAX_RETRIES = 2
@@ -25,8 +27,13 @@ OPENAI_MAX_RETRIES = 2
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Un cliente MCP por proceso; perezoso: el servidor stdio (scope `ask`, D29) arranca en la primera llamada."""
+    """Un cliente MCP por proceso; perezoso: el servidor stdio (scope `ask`, D29) arranca en la primera llamada.
+
+    El tracing (D34) se configura antes de crear el cliente: el servidor stdio hereda `os.environ` y con él
+    las variables LANGSMITH_*.
+    """
     settings = get_settings()
+    app.state.tracing = configure_tracing(settings)
     docs_tools = DocsMCPClient(stdio_connect(settings, "ask"), settings.mcp_call_timeout_s)
     app.state.docs_tools = docs_tools
     try:
@@ -49,8 +56,21 @@ def get_conn() -> Iterator[psycopg.Connection]:
         conn.close()
 
 
-def get_openai() -> OpenAI:
-    return OpenAI(api_key=get_settings().openai_api_key.get_secret_value(), timeout=OPENAI_TIMEOUT_S, max_retries=OPENAI_MAX_RETRIES)
+def make_openai(tracing: bool = False) -> OpenAI:
+    """Cliente OpenAI síncrono; con tracing, envuelto con `wrap_openai` (corridas LLM hijas con tokens, D34)."""
+    client = OpenAI(api_key=get_settings().openai_api_key.get_secret_value(), timeout=OPENAI_TIMEOUT_S, max_retries=OPENAI_MAX_RETRIES)
+    if not tracing:
+        return client
+    # Import perezoso: con tracing apagado no se carga `langsmith.wrappers`, cuyo `__init__` (0.14.17) importa
+    # un módulo deprecado y emite un DeprecationWarning ajeno a este código.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=r"langsmith\.wrappers\._openai_agents is deprecated", category=DeprecationWarning)
+        from langsmith.wrappers import wrap_openai
+    return wrap_openai(client)
+
+
+def get_openai(request: Request) -> OpenAI:
+    return make_openai(getattr(request.app.state, "tracing", False))
 
 
 def get_docs_tools(request: Request) -> Any:
@@ -113,7 +133,10 @@ async def ask(
         check_budget=lambda: check_budget(conn, KIND_ASK, settings.ask_daily_token_budget),
     )
     try:
-        state = await build_graph(deps).ainvoke({"question": req.question})
+        # La ruta solo se conoce al final: route/reason quedan en las outputs de la corrida, no en su metadata.
+        state = await build_graph(deps).ainvoke(
+            {"question": req.question}, config={"run_name": "ask", "metadata": {"question": req.question}}
+        )
     except BudgetExceeded:
         raise HTTPException(status_code=429, detail="Daily token budget exhausted")
     except DocsServerUnavailable:  # incluye DocsToolTimeout

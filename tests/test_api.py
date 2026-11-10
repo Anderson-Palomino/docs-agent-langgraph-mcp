@@ -88,7 +88,7 @@ def test_openai_client_has_timeout_and_retries(monkeypatch):
     from docs_agent.config import Settings
 
     monkeypatch.setattr(api, "get_settings", lambda: Settings(_env_file=None, openai_api_key="sk-test"))
-    client = api.get_openai()
+    client = api.make_openai()
     assert client.timeout == 30 and client.max_retries == 2
 
 
