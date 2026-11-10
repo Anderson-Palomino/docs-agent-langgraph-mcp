@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "docs-agent": {
+      "command": "uv",
+      "args": ["--directory", "..", "run", "python", "-m", "docs_agent.mcp_server"]
+    }
+  }
+}

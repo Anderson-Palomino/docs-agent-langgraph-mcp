@@ -43,6 +43,8 @@ Environment variables (or `.env`):
 | `CHUNK_MAX_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `800` / `100` | Chunking |
 | `ASK_DAILY_TOKEN_BUDGET` | `200000` | Max tokens/day (UTC) spent by `/ask`; beyond it, HTTP 429 |
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |
+| `NO_ANSWER_DISTANCE_THRESHOLD` | `0.52` | Best cosine distance above which the graph answers "no sé" (D21) |
+| `MCP_BUDGET_SCOPE` / `MCP_DAILY_TOKEN_BUDGET` | `mcp` / `100000` | Which budget the MCP server spends (`mcp` when Claude launches it, `ask` when the API does) and its daily cap (D29) |
 
 ## Agent graph
 
@@ -101,16 +103,26 @@ The server needs the compose db up and `OPENAI_API_KEY` in `.env` (read from the
 
 ### Connect from Claude Code
 
+For the demo, open Claude Code **inside `demo/`**. That folder carries both halves of the setup:
+
+- `demo/.mcp.json` registers the server (project scope, `uv --directory ..`), so Claude Code asks you to approve it the first time you run `claude` there.
+- `demo/CLAUDE.md` is the **grounding policy**: for any technical question, call `docs-agent` first and answer only from what it returns; if `in_corpus=false` or the results only *mention* the topic, say so instead of answering from general knowledge.
+
 ```bash
-claude mcp add docs-agent --scope local -- uv --directory <repo> run python -m docs_agent.mcp_server
+cd demo
+claude                 # approve "docs-agent" when prompted
 claude mcp list        # docs-agent should show as Connected
 ```
 
-On Windows, for example:
+To use the server from any other project instead (without the policy):
 
 ```bash
-claude mcp add docs-agent --scope local -- uv --directory C:/dev/docs-agent-langgraph-mcp run python -m docs_agent.mcp_server
+claude mcp add docs-agent --scope local -- uv --directory <repo> run python -m docs_agent.mcp_server
 ```
+
+On Windows, for example `uv --directory C:/dev/docs-agent-langgraph-mcp ...`.
+
+**Why the policy lives in the client (D35):** an MCP server offers tools; it cannot make the client use them. In rehearsal, without `demo/CLAUDE.md`, Claude judged the Django REST Framework question "not about FastAPI", never called `search_docs`, and answered from memory. With it: `search_docs` → `in_corpus=false` → an honest "the indexed docs don't cover this".
 
 ### Connect from Claude Desktop
 
@@ -127,6 +139,8 @@ Add this to `claude_desktop_config.json` and restart the app:
 }
 ```
 
+Then create a **Project** in Claude Desktop and paste the paragraph from `demo/CLAUDE.md` as its project instructions: same server, same grounding policy (D35).
+
 ### Alongside the n8n MCP
 
 The n8n workflow `integrations/n8n/workflows/02-mcp-docs-agent.json` exposes the whole agent as **one** HTTP tool (question in, answer with citations out), which suits flows and remote clients. This server exposes the **corpus** through three low-level tools so a client that reasons on its own (Claude, or the graph) can search, read the full section and decide. They solve different problems and coexist; `integrations/n8n/` is untouched. See D26.
@@ -137,7 +151,7 @@ Off by default; with it off nothing changes. To send traces to [LangSmith](https
 
 ```bash
 LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=lsv2_...   # a "Tracing Only" key is enough
+LANGSMITH_API_KEY=lsv2_...   # Personal Access Token; a write-only "Tracing Only" key is the least-privilege option (untested here)
 LANGSMITH_PROJECT=docs-agent
 ```
 
