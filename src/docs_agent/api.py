@@ -11,9 +11,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from openai import OpenAI
 from pydantic import BaseModel, field_validator, model_serializer
 
-from docs_agent.agent.graph import AgentDeps, build_graph, is_budget_error
+from docs_agent.agent.graph import build_graph, is_budget_error
 from docs_agent.agent.mcp_client import DocsMCPClient, DocsServerUnavailable, DocsToolError, stdio_connect
-from docs_agent.budget import KIND_ASK, BudgetExceeded, check_budget, record_usage
+from docs_agent.agent.runner import invoke_config, make_deps, record_spent
+from docs_agent.budget import KIND_ASK, BudgetExceeded, check_budget
 from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
@@ -119,17 +120,9 @@ async def ask(
     if await asyncio.to_thread(corpus_size, conn, settings.fastapi_docs_ref) == 0:
         raise HTTPException(status_code=503, detail="Corpus is empty: run the ingest command first")
 
-    deps = AgentDeps(
-        openai=client,
-        tools=docs_tools,
-        settings=settings,
-        check_budget=lambda: check_budget(conn, KIND_ASK, settings.ask_daily_token_budget),
-    )
+    deps = make_deps(conn, client, docs_tools, settings)
     try:
-        # La ruta solo se conoce al final: route/reason quedan en las outputs de la corrida, no en su metadata.
-        state = await build_graph(deps).ainvoke(
-            {"question": req.question}, config={"run_name": "ask", "metadata": {"question": req.question}}
-        )
+        state = await build_graph(deps).ainvoke({"question": req.question}, config=invoke_config(req.question))
     except BudgetExceeded:
         raise HTTPException(status_code=429, detail="Daily token budget exhausted")
     except DocsServerUnavailable:  # incluye DocsToolTimeout
@@ -141,10 +134,7 @@ async def ask(
     except openai.OpenAIError:
         raise HTTPException(status_code=502, detail="Upstream model error")
     finally:
-        # Lo que la API ya gastó (clasificador y respuesta, solo llamadas que volvieron) cuenta siempre, también
-        # si la petición falla; los embeddings los registró el servidor MCP en el mismo kind (scope `ask`).
-        if deps.spent["chat_tokens"]:
-            await asyncio.to_thread(record_usage, conn, KIND_ASK, deps.spent["chat_tokens"])
+        await asyncio.to_thread(record_spent, conn, deps)
 
     usage = state["usage"]
     classifier_tokens = usage["classifier_prompt_tokens"] + usage["classifier_completion_tokens"]
