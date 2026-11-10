@@ -173,3 +173,24 @@ def test_get_section_oauth2_has_real_code(db_conn):
     assert "OAuth2PasswordBearer" in out["content"]
     assert "def get_current_user" in out["content"]  # cubre también `async def get_current_user`
     assert "{*" not in out["content"]
+
+
+@pytest.mark.integration
+def test_search_docs_records_usage_even_if_search_fails(seeded_corpus, db_conn, monkeypatch):
+    from docs_agent.mcp_server import tools
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("search failed")
+
+    monkeypatch.setattr(tools, "search", boom)
+    with pytest.raises(RuntimeError):
+        search_docs(db_conn, FakeOpenAI(), make_settings(), "request body")
+    db_conn.rollback()
+    assert tokens_used_today(db_conn, "mcp") > 0
+
+
+@pytest.mark.parametrize("k, expected", [(-1, 1), (0, 1), (5, 5), (10, 10), (11, 10)])
+def test_clamp_k(k, expected):
+    from docs_agent.mcp_server.tools import clamp_k
+
+    assert clamp_k(k) == expected

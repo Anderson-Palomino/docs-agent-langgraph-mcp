@@ -78,6 +78,10 @@ def _run(prefix: str, fn: Callable[[], dict], summary: Callable[[dict], str]) ->
     except psycopg.Error as exc:
         _log(f"{prefix} → ERROR database unavailable ({type(exc).__name__}) · {_ms(start)} ms")
         raise ToolError("Database unavailable") from exc
+    except Exception as exc:
+        # Inesperado: se registra igual (una línea por llamada) y el SDK lo convierte en error genérico.
+        _log(f"{prefix} → ERROR {type(exc).__name__} · {_ms(start)} ms")
+        raise
     _log(f"{prefix} → {summary(out)} · {_ms(start)} ms")
     return out
 
@@ -114,7 +118,7 @@ def build_server(
             return f"{_plural(len(o['results']), 'result')} · best={best} · in_corpus={in_corpus}"
 
         return _run(
-            f'search_docs query="{_short_query(query)}" k={max(tools.MIN_K, min(tools.MAX_K, k))}',
+            f'search_docs query="{_short_query(query)}" k={tools.clamp_k(k)}',
             lambda: with_conn(lambda conn: tools.search_docs(conn, client_factory(), settings, query, k)),
             summary,
         )

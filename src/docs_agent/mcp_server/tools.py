@@ -32,6 +32,10 @@ def list_sources(conn: psycopg.Connection, settings: Settings) -> dict:
     }
 
 
+def clamp_k(k: int) -> int:
+    return max(MIN_K, min(MAX_K, k))
+
+
 def _budget_limit(settings: Settings) -> int:
     if settings.mcp_budget_scope == "ask":
         return settings.ask_daily_token_budget
@@ -40,12 +44,12 @@ def _budget_limit(settings: Settings) -> int:
 
 def search_docs(conn: psycopg.Connection, client, settings: Settings, query: str, k: int = 5) -> dict:
     """Top-k fragmentos de la versión indexada. Lanza `BudgetExceeded` si el presupuesto del scope se agotó."""
-    k = max(MIN_K, min(MAX_K, k))
+    k = clamp_k(k)
     kind = settings.mcp_budget_scope
     check_budget(conn, kind, _budget_limit(settings))
     vectors, tokens = embed_texts(client, [query], settings.embedding_model)
+    record_usage(conn, kind, tokens)  # antes de buscar: los tokens ya se gastaron aunque falle la consulta
     chunks = search(conn, vectors[0], settings.fastapi_docs_ref, k=k)
-    record_usage(conn, kind, tokens)
     best = float(chunks[0].distance) if chunks else None
     in_corpus = best is not None and best <= settings.no_answer_distance_threshold
     return {

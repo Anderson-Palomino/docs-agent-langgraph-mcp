@@ -116,3 +116,29 @@ async def test_search_docs_budget_exhausted_is_mcp_error(seeded_corpus, db_conn,
     assert "daily token budget exceeded: used 10 of 10" in res.content[0].text
     (line,) = mcp_lines(capsys)
     assert "→ ERROR daily token budget exceeded ·" in line
+
+
+@pytest.mark.anyio
+@pytest.mark.integration
+async def test_unexpected_error_logs_one_line(seeded_corpus, capsys, monkeypatch):
+    from docs_agent.mcp_server import tools
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("secret detail")
+
+    monkeypatch.setattr(tools, "list_sources", boom)
+    async with Client(make_server()) as c:
+        res = await c.call_tool("list_sources", {})
+    assert res.is_error is True
+    assert "secret detail" not in res.content[0].text
+    (line,) = mcp_lines(capsys)
+    assert re.fullmatch(r"\[mcp\] list_sources → ERROR RuntimeError · \d+ ms", line), line
+
+
+@pytest.mark.anyio
+@pytest.mark.integration
+async def test_search_docs_log_uses_clamped_k(seeded_corpus, capsys):
+    async with Client(make_server()) as c:
+        await c.call_tool("search_docs", {"query": "x", "k": 50})
+    (line,) = mcp_lines(capsys)
+    assert " k=10 → 2 results ·" in line
