@@ -14,8 +14,10 @@ def _chat_tokens(usage: dict) -> tuple[int, int]:
     mínimo; si el supuesto falla, la subestimación es una fracción de centavo.
     """
     tokens_in = usage.get("prompt_tokens", 0) + usage.get("classifier_prompt_tokens", 0)
-    tokens_in += usage.get("classifier_tokens", 0)
     tokens_out = usage.get("completion_tokens", 0) + usage.get("classifier_completion_tokens", 0)
+    has_split = "classifier_prompt_tokens" in usage or "classifier_completion_tokens" in usage
+    if not has_split:  # el total solo cuenta si no hay desglose: nunca los dos (sería doble conteo)
+        tokens_in += usage.get("classifier_tokens", 0)
     return tokens_in, tokens_out
 
 

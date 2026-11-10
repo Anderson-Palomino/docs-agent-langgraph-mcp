@@ -36,3 +36,13 @@ def test_total_tokens_sums_graph_usage():
     }
     assert total_tokens(usage) == 149
     assert total_tokens({}) == 0
+
+
+def test_cost_usd_classifier_total_ignored_when_split_present():
+    usage = {
+        "classifier_prompt_tokens": 1_000_000,
+        "classifier_completion_tokens": 0,
+        "classifier_tokens": 1_000_000,
+    }
+    assert cost_usd(usage, SETTINGS) == pytest.approx(0.40)
+    assert total_tokens(usage) == 1_000_000
