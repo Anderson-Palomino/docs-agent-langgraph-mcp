@@ -13,6 +13,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from docs_agent.agent.classify import classify_question
+from docs_agent.agent.mcp_client import DocsServerUnavailable, DocsToolError
 from docs_agent.config import Settings
 from docs_agent.rag.answer import Citation, answer_question
 from docs_agent.rag.retrieve import RetrievedChunk
@@ -21,6 +22,9 @@ NO_SE_ANSWERS = {
     "en": "I couldn't find this in the indexed FastAPI documentation, so I won't guess.",
     "es": "No encontré esto en la documentación de FastAPI indexada, así que no voy a inventar una respuesta.",
 }
+
+SECTION_MAX_CHARS = 12_000  # tope de la sección completa que entra al contexto del LLM
+SECTION_TRUNCATION_MARK = "\n[...]"
 
 Route = Literal["answer", "no_se"]
 Reason = Literal["out_of_domain", "insufficient_context"] | None
@@ -31,6 +35,7 @@ class AgentState(TypedDict, total=False):
     language: Literal["es", "en"]
     route: Route
     reason: Reason
+    classifier_reason: str
     results: list[dict]
     best_distance: float | None
     section: dict | None
@@ -59,11 +64,32 @@ def _empty_usage() -> dict[str, int]:
     }
 
 
+def _dedupe_by_url(results: list[dict]) -> list[dict]:
+    """Un resultado por URL; se queda el primero (los resultados llegan ordenados por distancia)."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for r in results:
+        if r["url"] not in seen:
+            seen.add(r["url"])
+            out.append(r)
+    return out
+
+
 def _chunks(results: list[dict]) -> list[RetrievedChunk]:
     return [
         RetrievedChunk(id=i, url=r["url"], title=r["title"], content=r["snippet"], distance=r["distance"])
         for i, r in enumerate(results)
     ]
+
+
+def _cap_section(text: str) -> str:
+    if len(text) <= SECTION_MAX_CHARS:
+        return text
+    return text[:SECTION_MAX_CHARS] + SECTION_TRUNCATION_MARK
+
+
+def _is_budget_error(exc: Exception) -> bool:
+    return isinstance(exc, DocsToolError) and "budget" in str(exc).lower()
 
 
 def build_graph(deps: AgentDeps) -> CompiledStateGraph:
@@ -80,6 +106,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         return {
             "language": c.language,
             "reason": None if c.is_fastapi else "out_of_domain",
+            "classifier_reason": c.reason,
             "usage": usage,
             "tools_used": [],
         }
@@ -88,7 +115,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         out = await deps.tools.call("search_docs", {"query": state["question"], "k": settings.top_k})
         usage = {**state["usage"], "embedding_tokens": out.get("embedding_tokens", 0)}
         return {
-            "results": out["results"],
+            "results": _dedupe_by_url(out["results"]),
             "best_distance": out["best_distance"],
             "usage": usage,
             "tools_used": [*state["tools_used"], "search_docs"],
@@ -102,14 +129,22 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
     async def answer(state: AgentState) -> AgentState:
         deps.check_budget()
         results = state["results"]
-        section = await deps.tools.call("get_section", {"url": results[0]["url"]})
+        tools_used = list(state["tools_used"])
+        try:
+            section = await deps.tools.call("get_section", {"url": results[0]["url"]})
+            section_text = _cap_section(section["content"])
+            tools_used.append("get_section")
+        except (DocsToolError, DocsServerUnavailable) as exc:  # DocsToolTimeout es DocsServerUnavailable
+            if _is_budget_error(exc):
+                raise
+            section, section_text = None, None  # responder con los snippets de search_docs
         result = await asyncio.to_thread(
             answer_question,
             deps.openai,
             state["question"],
             _chunks(results),
             settings.chat_model,
-            section["content"],
+            section_text,
         )
         usage = {
             **state["usage"],
@@ -124,7 +159,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
             "citations": result.citations,
             "grounded": result.grounded,
             "usage": usage,
-            "tools_used": [*state["tools_used"], "get_section"],
+            "tools_used": tools_used,
         }
 
     async def no_se(state: AgentState) -> AgentState:

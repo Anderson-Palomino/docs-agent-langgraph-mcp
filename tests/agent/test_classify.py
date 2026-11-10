@@ -12,6 +12,16 @@ def test_classification_schema_has_language():
         Classification(is_fastapi=True, language="fr", reason="r")
 
 
+def test_prompt_rejects_other_frameworks_even_if_mentioned():
+    from docs_agent.agent.classify import CLASSIFIER_PROMPT
+
+    assert "Django REST Framework" in CLASSIFIER_PROMPT
+    assert "mentioned is not documented" in CLASSIFIER_PROMPT
+    assert "EVEN IF the FastAPI docs mention or compare it" in CLASSIFIER_PROMPT
+    for positive in ("Pydantic", "Starlette", "OAuth2", "dependencies", "deployment", "testing"):
+        assert positive in CLASSIFIER_PROMPT
+
+
 def test_classify_question_uses_schema_temperature_zero_and_returns_usage():
     fake = FakeOpenAI(is_fastapi=False, language="es")
     c, prompt_tokens, completion_tokens = classify_question(fake, "¿Cómo uso Django?", model="m")

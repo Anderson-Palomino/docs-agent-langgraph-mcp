@@ -1,7 +1,7 @@
 import pytest
 
-from docs_agent.agent.graph import NO_SE_ANSWERS, AgentDeps, build_graph, mermaid
-from docs_agent.agent.mcp_client import DocsToolError
+from docs_agent.agent.graph import NO_SE_ANSWERS, SECTION_MAX_CHARS, AgentDeps, build_graph, mermaid
+from docs_agent.agent.mcp_client import DocsServerUnavailable, DocsToolError, DocsToolTimeout
 from docs_agent.budget import BudgetExceeded
 from docs_agent.config import Settings
 from docs_agent.rag.answer import LLMAnswer
@@ -218,6 +218,67 @@ async def test_insufficient_context_answers_in_classifier_language():
     graph, _ = make(openai=FakeOpenAI(language="es"), tools=tools)
     out = await graph.ainvoke({"question": "q"})
     assert out["answer"] == ES
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "exc",
+    [DocsToolError("unknown url"), DocsToolTimeout("get_section timed out"), DocsServerUnavailable("dead")],
+)
+async def test_get_section_failure_falls_back_to_snippets(exc):
+    tools = FakeTools(raises={"get_section": exc})
+    graph, deps = make(tools=tools)
+    out = await graph.ainvoke({"question": "q"})
+    assert out["route"] == "answer" and out["grounded"] is True
+    assert out["tools_used"] == ["search_docs"]
+    assert out["section"] is None
+    joined = " ".join(m["content"] for m in chat_calls(deps.openai)[-1]["messages"])
+    assert "body snippet" in joined and "query snippet" in joined
+
+
+@pytest.mark.anyio
+async def test_get_section_budget_error_propagates():
+    tools = FakeTools(raises={"get_section": DocsToolError("daily token budget exceeded: used 5 of 5")})
+    graph, deps = make(tools=tools)
+    with pytest.raises(DocsToolError, match="budget"):
+        await graph.ainvoke({"question": "q"})
+    assert len(chat_calls(deps.openai)) == 1  # solo el clasificador
+
+
+@pytest.mark.anyio
+async def test_section_text_is_capped():
+    long = {"url": BODY, "title": "Request Body", "content": "A" * (SECTION_MAX_CHARS + 500) + "TAIL"}
+    tools = FakeTools(responses={"search_docs": search_response(), "get_section": long})
+    graph, deps = make(tools=tools)
+    await graph.ainvoke({"question": "q"})
+    user = chat_calls(deps.openai)[-1]["messages"][1]["content"]
+    assert SECTION_MAX_CHARS == 12_000
+    assert "A" * SECTION_MAX_CHARS + "\n[...]" in user
+    assert "A" * (SECTION_MAX_CHARS + 1) not in user and "TAIL" not in user
+
+
+@pytest.mark.anyio
+async def test_results_deduped_by_url_keeping_first():
+    results = [
+        {"title": "Request Body", "url": BODY, "distance": 0.3, "snippet": "first body"},
+        {"title": "Request Body", "url": BODY, "distance": 0.35, "snippet": "second body"},
+        {"title": "Query Parameters", "url": QUERY, "distance": 0.4, "snippet": "query snippet"},
+    ]
+    tools = FakeTools(responses={"search_docs": search_response(results=results), "get_section": SECTION})
+    graph, deps = make(tools=tools)
+    out = await graph.ainvoke({"question": "q"})
+    assert [r["url"] for r in out["results"]] == [BODY, QUERY]
+    assert out["results"][0]["snippet"] == "first body"
+    user = chat_calls(deps.openai)[-1]["messages"][1]["content"]
+    assert "[3]" not in user and "second body" not in user
+
+
+@pytest.mark.anyio
+async def test_classifier_reason_kept_in_state():
+    graph, _ = make(openai=FakeOpenAI(is_fastapi=False))
+    out = await graph.ainvoke({"question": "q"})
+    assert out["classifier_reason"] == "fake"
+    assert out["reason"] == "out_of_domain"
 
 
 def test_no_se_texts_are_exact():
