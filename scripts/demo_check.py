@@ -18,8 +18,11 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+import psycopg
 
 from rich.console import Console
 from rich.table import Table
@@ -34,6 +37,8 @@ MOMENTS = {
 }
 SECURITY_PATH = "/tutorial/security/"
 CHECKLIST = "[ ] Claude no explica cómo configurar permisos de DRF; a lo sumo dice que la doc lo menciona como inspiración."
+QUESTION_MAX_CHARS = 1000  # igual que la validación de `/ask`
+PYTEST_TIMEOUT_S = 600
 COLUMNS = ("Pregunta", "Ruta", "Herramientas", "Tokens", "Costo USD", "Latencia ms", "✓/✗")
 EXIT_FAILED = 1
 EXIT_BUDGET = 2
@@ -80,8 +85,30 @@ def evaluate_expectation(moment: int, state: dict) -> bool:
 
 
 def parse_passed(pytest_output: str) -> int | None:
-    m = re.search(r"(\d+) passed", pytest_output)
-    return int(m.group(1)) if m else None
+    """Tests que pasaron según la línea final de pytest (la última coincidencia: un traceback previo puede
+    contener otro "N passed")."""
+    matches = re.findall(r"(\d+) passed", pytest_output)
+    return int(matches[-1]) if matches else None
+
+
+async def invoke_recording(
+    invoke: Callable[[], Awaitable[dict]], record: Callable[[], None], warn: Callable[[str], None]
+) -> dict:
+    """Corre el grafo y registra lo gastado siempre (como el `finally` de `/ask`).
+
+    Si el grafo falló, un error al registrar no tapa el error original: se avisa en una línea y se relanza el
+    original. Si el grafo terminó bien, el error de base de datos se propaga.
+    """
+    try:
+        state = await invoke()
+    except BaseException:
+        try:
+            await asyncio.to_thread(record)
+        except psycopg.Error as exc:
+            warn(f"no se pudo registrar el gasto de tokens: {type(exc).__name__}")
+        raise
+    await asyncio.to_thread(record)
+    return state
 
 
 def _mark(ok: bool | None) -> Text:
@@ -165,12 +192,13 @@ async def _run(questions: list[tuple[int | None, str]], settings, conn, client, 
                 rows.append(Row(question, "tool", ["list_sources"], 0, 0.0, latency, evaluate_expectation(1, state)))
                 continue
             deps = make_deps(conn, client, tools, settings)
-            try:
-                state = await build_graph(deps).ainvoke(
+            state = await invoke_recording(
+                lambda: build_graph(deps).ainvoke(
                     {"question": question}, config=invoke_config(question, source="demo_check")
-                )
-            finally:
-                await asyncio.to_thread(record_spent, conn, deps)
+                ),
+                lambda: record_spent(conn, deps),
+                lambda msg: console.print(f"[yellow]aviso: {msg}[/]"),
+            )
             latency = (time.perf_counter() - start) * 1000
             usage = state["usage"]
             ok = evaluate_expectation(moment, state) if moment is not None else None
@@ -202,15 +230,20 @@ async def _run(questions: list[tuple[int | None, str]], settings, conn, client, 
 
 def _run_pytest(env: dict[str, str]) -> tuple[int | None, bool]:
     """(tests que pasaron, falló) con el entorno previo al tracing: ningún test debe hablar con LangSmith."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q"],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q"],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=PYTEST_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"pytest superó {PYTEST_TIMEOUT_S} s y se cortó.", file=sys.stderr)
+        return None, True
     return parse_passed(proc.stdout), proc.returncode != 0
 
 
@@ -219,6 +252,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--q", help="corre solo esta pregunta por el grafo (sin esperado)")
     parser.add_argument("--skip-tests", action="store_true", help="no correr pytest")
     args = parser.parse_args(argv)
+    question = None
+    if args.q is not None:
+        question = args.q.strip()
+        if not 1 <= len(question) <= QUESTION_MAX_CHARS:
+            parser.error(f"--q debe tener entre 1 y {QUESTION_MAX_CHARS} caracteres")
 
     # La consola de Windows (o una tubería en cp1252) no siempre es UTF-8: ✓/✗ y los acentos deben salir bien.
     if hasattr(sys.stdout, "reconfigure") and (sys.stdout.encoding or "").lower() != "utf-8":
@@ -243,25 +281,31 @@ def main(argv: list[str] | None = None) -> int:
     wrapper = load_openai_wrapper() if tracing else None
     console.print(f"[dim]tracing LangSmith: {'activo · proyecto ' + settings.langsmith_project if tracing else 'apagado'}[/]")
 
-    if args.q:
-        questions: list[tuple[int | None, str]] = [(None, args.q)]
+    if question is not None:
+        questions: list[tuple[int | None, str]] = [(None, question)]
     else:
         questions = list(MOMENTS.items())
 
-    with connect(settings.database_url) as conn:
-        try:
-            check_budget(conn, KIND_ASK, settings.ask_daily_token_budget)
-        except BudgetExceeded as exc:
-            console.print(f"[red]Presupuesto diario `ask` agotado: {exc}[/]")
-            return EXIT_BUDGET
-        if corpus_size(conn, settings.fastapi_docs_ref) == 0:
-            console.print("[red]El corpus está vacío: corre primero la ingesta.[/]")
-            return EXIT_FAILED
-        try:
-            rows = asyncio.run(_run(questions, settings, conn, make_openai(wrapper), console))
-        except DemoAbort as exc:
-            console.print(f"[red]{exc}[/]")
-            return exc.exit_code
+    try:
+        with connect(settings.database_url) as conn:
+            try:
+                check_budget(conn, KIND_ASK, settings.ask_daily_token_budget)
+            except BudgetExceeded as exc:
+                console.print(f"[red]Presupuesto diario `ask` agotado: {exc}[/]")
+                return EXIT_BUDGET
+            if corpus_size(conn, settings.fastapi_docs_ref) == 0:
+                console.print("[red]El corpus está vacío: corre primero la ingesta.[/]")
+                return EXIT_FAILED
+            try:
+                rows = asyncio.run(_run(questions, settings, conn, make_openai(wrapper), console))
+            except DemoAbort as exc:
+                console.print(f"[red]{exc}[/]")
+                return exc.exit_code
+    except psycopg.Error as exc:
+        # Una línea, sin la cadena de conexión: solo el tipo y la primera línea del mensaje.
+        first_line = (str(exc).strip().splitlines() or [""])[0]
+        console.print(Text(f"Error de base de datos ({type(exc).__name__}): {first_line}", style="red"))
+        return EXIT_FAILED
 
     summary = {
         "total_cost_usd": sum(r.cost_usd for r in rows),
