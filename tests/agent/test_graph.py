@@ -1,6 +1,6 @@
 import pytest
 
-from docs_agent.agent.graph import NO_SE_ANSWERS, SECTION_MAX_CHARS, AgentDeps, build_graph, mermaid
+from docs_agent.agent.graph import NO_SE_ANSWERS, SECTION_MAX_CHARS, AgentDeps, _chunks, build_graph, mermaid
 from docs_agent.agent.mcp_client import DocsServerUnavailable, DocsToolError, DocsToolTimeout
 from docs_agent.budget import BudgetExceeded
 from docs_agent.config import Settings
@@ -16,8 +16,10 @@ ES = "No encontré esto en la documentación de FastAPI indexada, así que no vo
 def search_response(best: float | None = 0.3, results=None) -> dict:
     if results is None:
         results = [
-            {"title": "Request Body", "url": BODY, "distance": best, "snippet": "body snippet"},
-            {"title": "Query Parameters", "url": QUERY, "distance": 0.4, "snippet": "query snippet"},
+            {"title": "Request Body", "url": BODY, "distance": best, "snippet": "body snippet",
+             "content": "body snippet and the FULL BODY CHUNK"},
+            {"title": "Query Parameters", "url": QUERY, "distance": 0.4, "snippet": "query snippet",
+             "content": "query snippet and the FULL QUERY CHUNK"},
         ]
     return {"results": results, "best_distance": best, "in_corpus": True, "notice": None, "embedding_tokens": 7}
 
@@ -67,12 +69,12 @@ async def test_normal_question_routes_to_answer():
     assert out["tools_used"] == ["search_docs", "get_section"]
     assert out["citations"] and out["citations"][0].url in {BODY, QUERY}
     assert deps.tools.calls == [
-        ("search_docs", {"query": "How do I declare a request body?", "k": 5}),
+        ("search_docs", {"query": "How do I declare a request body?", "k": 5, "include_content": True}),
         ("get_section", {"url": BODY}),
     ]
     # El contexto lleva la sección completa y los demás resultados.
     joined = " ".join(m["content"] for m in chat_calls(deps.openai)[-1]["messages"])
-    assert "FULL SECTION TEXT" in joined and "query snippet" in joined
+    assert "FULL SECTION TEXT" in joined and "FULL QUERY CHUNK" in joined
     assert out["usage"] == {
         "classifier_prompt_tokens": 100,
         "classifier_completion_tokens": 20,
@@ -225,7 +227,7 @@ async def test_insufficient_context_answers_in_classifier_language():
     "exc",
     [DocsToolError("unknown url"), DocsToolTimeout("get_section timed out"), DocsServerUnavailable("dead")],
 )
-async def test_get_section_failure_falls_back_to_snippets(exc):
+async def test_get_section_failure_falls_back_to_full_chunks(exc):
     tools = FakeTools(raises={"get_section": exc})
     graph, deps = make(tools=tools)
     out = await graph.ainvoke({"question": "q"})
@@ -233,7 +235,7 @@ async def test_get_section_failure_falls_back_to_snippets(exc):
     assert out["tools_used"] == ["search_docs"]
     assert out["section"] is None
     joined = " ".join(m["content"] for m in chat_calls(deps.openai)[-1]["messages"])
-    assert "body snippet" in joined and "query snippet" in joined
+    assert "FULL BODY CHUNK" in joined and "FULL QUERY CHUNK" in joined
 
 
 @pytest.mark.anyio
@@ -260,9 +262,9 @@ async def test_section_text_is_capped():
 @pytest.mark.anyio
 async def test_results_deduped_by_url_keeping_first():
     results = [
-        {"title": "Request Body", "url": BODY, "distance": 0.3, "snippet": "first body"},
-        {"title": "Request Body", "url": BODY, "distance": 0.35, "snippet": "second body"},
-        {"title": "Query Parameters", "url": QUERY, "distance": 0.4, "snippet": "query snippet"},
+        {"title": "Request Body", "url": BODY, "distance": 0.3, "snippet": "first body", "content": "first body"},
+        {"title": "Request Body", "url": BODY, "distance": 0.35, "snippet": "second body", "content": "second body"},
+        {"title": "Query Parameters", "url": QUERY, "distance": 0.4, "snippet": "q", "content": "query content"},
     ]
     tools = FakeTools(responses={"search_docs": search_response(results=results), "get_section": SECTION})
     graph, deps = make(tools=tools)
@@ -279,6 +281,13 @@ async def test_classifier_reason_kept_in_state():
     out = await graph.ainvoke({"question": "q"})
     assert out["classifier_reason"] == "fake"
     assert out["reason"] == "out_of_domain"
+
+
+def test_chunks_use_full_content_not_snippet():
+    results = [{"title": "T", "url": BODY, "distance": 0.3, "snippet": "short", "content": "short and long"}]
+    [chunk] = _chunks(results)
+    assert chunk.content == "short and long"
+    assert (chunk.id, chunk.url, chunk.title, chunk.distance) == (0, BODY, "T", 0.3)
 
 
 def test_no_se_texts_are_exact():

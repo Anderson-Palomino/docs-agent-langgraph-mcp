@@ -151,7 +151,14 @@ class InProcessDocsTools:
         self.calls.append((tool, args))
         try:
             if tool == "search_docs":
-                return tools.search_docs(self.conn, self.openai, self.settings, args["query"], args.get("k", 5))
+                return tools.search_docs(
+                    self.conn,
+                    self.openai,
+                    self.settings,
+                    args["query"],
+                    args.get("k", 5),
+                    args.get("include_content", False),
+                )
             if tool == "get_section":
                 return tools.get_section(self.conn, self.settings, args["url"])
             if tool == "list_sources":

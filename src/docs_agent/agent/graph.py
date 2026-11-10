@@ -79,8 +79,9 @@ def _dedupe_by_url(results: list[dict]) -> list[dict]:
 
 
 def _chunks(results: list[dict]) -> list[RetrievedChunk]:
+    """Contexto de la respuesta: el fragmento completo de cada resultado (como en la Semana 1), no el snippet."""
     return [
-        RetrievedChunk(id=i, url=r["url"], title=r["title"], content=r["snippet"], distance=r["distance"])
+        RetrievedChunk(id=i, url=r["url"], title=r["title"], content=r["content"], distance=r["distance"])
         for i, r in enumerate(results)
     ]
 
@@ -116,7 +117,9 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         }
 
     async def search(state: AgentState) -> AgentState:
-        out = await deps.tools.call("search_docs", {"query": state["question"], "k": settings.top_k})
+        out = await deps.tools.call(
+            "search_docs", {"query": state["question"], "k": settings.top_k, "include_content": True}
+        )
         usage = {**state["usage"], "embedding_tokens": out.get("embedding_tokens", 0)}
         return {
             "results": _dedupe_by_url(out["results"]),
@@ -141,7 +144,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         except (DocsToolError, DocsServerUnavailable) as exc:  # DocsToolTimeout es DocsServerUnavailable
             if is_budget_error(exc):
                 raise
-            section, section_text = None, None  # responder con los snippets de search_docs
+            section, section_text = None, None  # responder con los fragmentos completos de search_docs
         result = await asyncio.to_thread(
             answer_question,
             deps.openai,

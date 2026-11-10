@@ -72,6 +72,18 @@ async def test_call_search_docs(seeded_corpus, capsys):
 
 @pytest.mark.anyio
 @pytest.mark.integration
+async def test_call_search_docs_include_content(seeded_corpus):
+    async with Client(make_server()) as c:
+        plain = await c.call_tool("search_docs", {"query": "request body"})
+        full = await c.call_tool("search_docs", {"query": "request body", "include_content": True})
+    assert all("content" not in r for r in plain.structured_content["results"])
+    assert full.structured_content["results"]
+    for r in full.structured_content["results"]:
+        assert r["content"].startswith(r["snippet"])
+
+
+@pytest.mark.anyio
+@pytest.mark.integration
 async def test_search_docs_log_truncates_query(seeded_corpus, capsys):
     query = "q" * 100
     async with Client(make_server()) as c:

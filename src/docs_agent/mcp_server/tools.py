@@ -42,8 +42,27 @@ def _budget_limit(settings: Settings) -> int:
     return settings.mcp_daily_token_budget
 
 
-def search_docs(conn: psycopg.Connection, client, settings: Settings, query: str, k: int = 5) -> dict:
-    """Top-k fragmentos de la versión indexada. Lanza `BudgetExceeded` si el presupuesto del scope se agotó."""
+def _result(c, include_content: bool) -> dict:
+    out = {
+        "title": c.title,
+        "url": c.url,
+        "distance": round(float(c.distance), 4),
+        "snippet": c.content[:SNIPPET_CHARS],
+    }
+    if include_content:
+        out["content"] = c.content
+    return out
+
+
+def search_docs(
+    conn: psycopg.Connection, client, settings: Settings, query: str, k: int = 5, include_content: bool = False
+) -> dict:
+    """Top-k fragmentos de la versión indexada. Lanza `BudgetExceeded` si el presupuesto del scope se agotó.
+
+    `include_content=True` agrega a cada resultado el fragmento completo (`content`): lo pide el grafo para
+    armar el contexto de la respuesta (D31). Por defecto solo viaja el snippet, para no inflar el contexto
+    de un cliente como Claude.
+    """
     k = clamp_k(k)
     kind = settings.mcp_budget_scope
     check_budget(conn, kind, _budget_limit(settings))
@@ -53,15 +72,7 @@ def search_docs(conn: psycopg.Connection, client, settings: Settings, query: str
     best = float(chunks[0].distance) if chunks else None
     in_corpus = best is not None and best <= settings.no_answer_distance_threshold
     return {
-        "results": [
-            {
-                "title": c.title,
-                "url": c.url,
-                "distance": round(float(c.distance), 4),
-                "snippet": c.content[:SNIPPET_CHARS],
-            }
-            for c in chunks
-        ],
+        "results": [_result(c, include_content) for c in chunks],
         "best_distance": round(best, 4) if best is not None else None,
         "in_corpus": in_corpus,
         "notice": None if in_corpus else NOT_IN_CORPUS_NOTICE,

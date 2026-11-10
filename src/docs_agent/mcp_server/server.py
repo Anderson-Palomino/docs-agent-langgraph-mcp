@@ -36,7 +36,8 @@ LIST_SOURCES_DESC = (
 SEARCH_DOCS_DESC = (
     "Semantic search over the indexed FastAPI documentation. Returns the top-k chunks (title, url, cosine "
     "distance, 300-char snippet), best_distance and in_corpus. If in_corpus is false, the docs do not cover "
-    "the question: do not answer from general knowledge. k is clamped to 1..10."
+    "the question: do not answer from general knowledge. k is clamped to 1..10; include_content=true adds "
+    "each chunk's full text."
 )
 GET_SECTION_DESC = (
     "Full Markdown of one documentation section by its exact URL (as returned by search_docs). A page URL "
@@ -111,7 +112,7 @@ def build_server(
 
     @server.tool(description=SEARCH_DOCS_DESC)
     @traceable(name="search_docs", run_type="tool")
-    def search_docs(query: str, k: int = 5) -> dict[str, Any]:
+    def search_docs(query: str, k: int = 5, include_content: bool = False) -> dict[str, Any]:
         def summary(o: dict) -> str:
             best = "none" if o["best_distance"] is None else f"{o['best_distance']:.3f}"
             in_corpus = "yes" if o["in_corpus"] else "no"
@@ -119,7 +120,9 @@ def build_server(
 
         return _run(
             f'search_docs query="{_short_query(query)}" k={tools.clamp_k(k)}',
-            lambda: with_conn(lambda conn: tools.search_docs(conn, client_factory(), settings, query, k)),
+            lambda: with_conn(
+                lambda conn: tools.search_docs(conn, client_factory(), settings, query, k, include_content)
+            ),
             summary,
         )
 

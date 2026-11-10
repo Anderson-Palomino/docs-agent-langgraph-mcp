@@ -66,6 +66,21 @@ def test_search_docs_snippet_is_first_300_chars(db_conn):
 
 
 @pytest.mark.integration
+def test_search_docs_include_content_adds_full_chunk(db_conn):
+    from docs_agent.ingest.chunk import Chunk
+    from docs_agent.ingest.store import replace_corpus
+
+    content = "x" * 500
+    replace_corpus(db_conn, "test-ref", [Chunk(BODY, "Body", content, 1)], [FakeOpenAI.vector_for(content)])
+    default = search_docs(db_conn, FakeOpenAI(), make_settings(), content)
+    assert "content" not in default["results"][0]
+    full = search_docs(db_conn, FakeOpenAI(), make_settings(), content, include_content=True)
+    first = full["results"][0]
+    assert set(first) == {"title", "url", "distance", "snippet", "content"}
+    assert first["content"] == content and first["snippet"] == "x" * 300
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize("k, expected", [(0, 1), (-3, 1), (1, 1), (50, 2)])
 def test_search_docs_clamps_k(seeded_corpus, db_conn, k, expected):
     out = search_docs(db_conn, FakeOpenAI(), make_settings(), "anything", k=k)
