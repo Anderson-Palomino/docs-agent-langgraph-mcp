@@ -10,6 +10,14 @@ def _test_database_url() -> str:
     return os.environ.get("TEST_DATABASE_URL") or Settings(_env_file=None).test_database_url
 
 
+def assert_not_demo_db(url: str) -> None:
+    """Refuse to run tests against the demo database `docs`."""
+    from psycopg.conninfo import conninfo_to_dict
+
+    if conninfo_to_dict(url).get("dbname") == "docs":
+        pytest.exit("TEST_DATABASE_URL points at the demo database `docs`; refusing to run tests (they truncate tables).", returncode=2)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_test_db():
     """Create the `docs_test` database if missing and apply db/init.sql. Never touches `docs`."""
@@ -18,12 +26,16 @@ def _ensure_test_db():
     from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
     url = _test_database_url()
+    assert_not_demo_db(url)
     dbname = conninfo_to_dict(url)["dbname"]
     try:
         with psycopg.connect(make_conninfo(url, dbname="postgres"), autocommit=True, connect_timeout=5) as admin:
             exists = admin.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,)).fetchone()
             if not exists:
-                admin.execute(psycopg.sql.SQL("CREATE DATABASE {}").format(psycopg.sql.Identifier(dbname)))
+                try:
+                    admin.execute(psycopg.sql.SQL("CREATE DATABASE {}").format(psycopg.sql.Identifier(dbname)))
+                except psycopg.errors.DuplicateDatabase:
+                    pass  # created concurrently
         init_sql = (Path(__file__).resolve().parent.parent / "db" / "init.sql").read_text(encoding="utf-8")
         with psycopg.connect(url, autocommit=True, connect_timeout=5) as conn:
             conn.execute(init_sql)
@@ -56,6 +68,7 @@ def db_conn():
 
     from docs_agent.db import connect
 
+    assert_not_demo_db(_test_database_url())
     try:
         conn = connect()
     except psycopg.OperationalError:

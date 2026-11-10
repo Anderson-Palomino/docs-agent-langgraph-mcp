@@ -33,7 +33,7 @@ def get_conn() -> Iterator[psycopg.Connection]:
 
 
 def get_openai() -> OpenAI:
-    return OpenAI(api_key=get_settings().openai_api_key, timeout=OPENAI_TIMEOUT_S, max_retries=OPENAI_MAX_RETRIES)
+    return OpenAI(api_key=get_settings().openai_api_key.get_secret_value(), timeout=OPENAI_TIMEOUT_S, max_retries=OPENAI_MAX_RETRIES)
 
 
 class AskRequest(BaseModel):
@@ -64,7 +64,7 @@ def ask(
     client: OpenAI = Depends(get_openai),
 ) -> AskResponse:
     settings = get_settings()
-    if not settings.openai_api_key:
+    if not settings.openai_api_key.get_secret_value():
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
     try:
         check_budget(conn, KIND_ASK, settings.ask_daily_token_budget)

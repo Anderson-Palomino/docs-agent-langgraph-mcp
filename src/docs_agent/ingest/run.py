@@ -50,10 +50,10 @@ def run_ingest(settings: Settings, client, conn: psycopg.Connection) -> int:
 
 def main() -> None:
     settings = get_settings()
-    if not settings.openai_api_key:
+    if not settings.openai_api_key.get_secret_value():
         print("error: OPENAI_API_KEY is empty; set it in .env", file=sys.stderr)
         sys.exit(1)
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(api_key=settings.openai_api_key.get_secret_value())
     conn = connect(settings.database_url)
     try:
         n, tokens = _ingest(settings, client, conn)
