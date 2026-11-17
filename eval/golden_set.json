@@ -1,0 +1,314 @@
+[
+  {
+    "id": "g01",
+    "question": "¿Cómo protejo un endpoint con OAuth2 en FastAPI y obtengo el usuario actual? Muéstrame la sección exacta.",
+    "lang": "es",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": [
+      "https://fastapi.tiangolo.com/tutorial/security/get-current-user/",
+      "https://fastapi.tiangolo.com/tutorial/security/first-steps/"
+    ],
+    "notes": "Momento 2 de la demo (texto exacto). Basta con citar una de las dos páginas de /tutorial/security/; get-current-user es la que responde 'el usuario actual'.",
+    "judge_review": true
+  },
+  {
+    "id": "g02",
+    "question": "¿Cómo declaro un parámetro de ruta con tipo int para que FastAPI lo valide automáticamente?",
+    "lang": "es",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/path-params/"],
+    "notes": "Básica del tutorial, pregunta en español sobre doc en inglés.",
+    "judge_review": true
+  },
+  {
+    "id": "g03",
+    "question": "¿Cómo hago que un endpoint de creación devuelva el código de estado 201 en lugar de 200?",
+    "lang": "es",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/response-status-code/"],
+    "notes": "Básica; no nombra FastAPI (el clasificador debe aceptarla igual).",
+    "judge_review": false
+  },
+  {
+    "id": "g04",
+    "question": "¿Cómo funciona una dependencia con yield para abrir y cerrar una sesión de base de datos?",
+    "lang": "es",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/"],
+    "notes": "Intermedia; está en el ejemplo del clasificador pero con otra formulación.",
+    "judge_review": false
+  },
+  {
+    "id": "g05",
+    "question": "¿Cómo construyo una imagen de Docker para mi aplicación FastAPI?",
+    "lang": "es",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/deployment/docker/"],
+    "notes": "Despliegue; página larga con muchas secciones.",
+    "judge_review": false
+  },
+  {
+    "id": "g06",
+    "question": "¿Cómo recibo campos de un formulario HTML en lugar de JSON?",
+    "lang": "es",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/request-forms/"],
+    "notes": "Básica; no nombra FastAPI ni Form.",
+    "judge_review": false
+  },
+  {
+    "id": "g07",
+    "question": "¿Cómo creo un middleware que mida el tiempo de cada petición y lo agregue en una cabecera?",
+    "lang": "es",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/middleware/"],
+    "notes": "El tutorial de middleware usa justo el ejemplo X-Process-Time.",
+    "judge_review": false
+  },
+  {
+    "id": "g08",
+    "question": "¿Cómo divido mi aplicación en varios archivos con APIRouter y además aplico una dependencia a todas las rutas de la aplicación?",
+    "lang": "es",
+    "category": "in_multi",
+    "expected_route": "answer",
+    "expected_urls": [
+      "https://fastapi.tiangolo.com/tutorial/bigger-applications/",
+      "https://fastapi.tiangolo.com/tutorial/dependencies/global-dependencies/"
+    ],
+    "notes": "Necesita dos páginas: APIRouter (bigger-applications) y dependencias globales.",
+    "judge_review": false
+  },
+  {
+    "id": "g09",
+    "question": "¿Cómo limito la longitud máxima de un parámetro de consulta de texto?",
+    "lang": "es",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/query-params-str-validations/"],
+    "notes": "Básica; Query(max_length=...) sin nombrarlo.",
+    "judge_review": false
+  },
+  {
+    "id": "g10",
+    "question": "How do I declare a request body using a Pydantic model?",
+    "lang": "en",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/body/"],
+    "notes": "Básica en inglés; Pydantic usado dentro de FastAPI cuenta como dominio.",
+    "judge_review": true
+  },
+  {
+    "id": "g11",
+    "question": "How can I add tags and a summary to a path operation so they show up in the docs?",
+    "lang": "en",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/path-operation-configuration/"],
+    "notes": "Básica de configuración de path operations.",
+    "judge_review": false
+  },
+  {
+    "id": "g12",
+    "question": "How do I run code at startup and shutdown with the lifespan parameter?",
+    "lang": "en",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/advanced/events/"],
+    "notes": "Intermedia de la guía avanzada (Lifespan Events).",
+    "judge_review": true
+  },
+  {
+    "id": "g13",
+    "question": "How do I create a WebSocket endpoint and then write a test for it with TestClient?",
+    "lang": "en",
+    "category": "in_multi",
+    "expected_route": "answer",
+    "expected_urls": [
+      "https://fastapi.tiangolo.com/advanced/websockets/",
+      "https://fastapi.tiangolo.com/advanced/testing-websockets/"
+    ],
+    "notes": "Necesita dos páginas: crear el WebSocket y testearlo.",
+    "judge_review": false
+  },
+  {
+    "id": "g14",
+    "question": "How do I replace a dependency with a fake one during tests?",
+    "lang": "en",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/advanced/testing-dependencies/"],
+    "notes": "dependency_overrides sin nombrarlo. La página no tiene fila sin ancla en sections; cuenta cualquier sección de la página.",
+    "judge_review": false
+  },
+  {
+    "id": "g15",
+    "question": "How do I read a cookie value sent by the client in a path operation?",
+    "lang": "en",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/cookie-params/"],
+    "notes": "Básica; ojo con confundirla con response-cookies (que es escribir la cookie).",
+    "judge_review": false
+  },
+  {
+    "id": "g16",
+    "question": "How do I add a custom header to the response and also set a cookie on that same response?",
+    "lang": "en",
+    "category": "in_multi",
+    "expected_route": "answer",
+    "expected_urls": [
+      "https://fastapi.tiangolo.com/advanced/response-headers/",
+      "https://fastapi.tiangolo.com/advanced/response-cookies/"
+    ],
+    "notes": "Necesita dos páginas paralelas de la guía avanzada (headers y cookies de respuesta).",
+    "judge_review": true
+  },
+  {
+    "id": "g17",
+    "question": "How do I require specific OAuth2 scopes for a path operation?",
+    "lang": "en",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/"],
+    "notes": "Lo que la demo ofrece como alternativa cuando no cubre DRF (D35).",
+    "judge_review": false
+  },
+  {
+    "id": "g18",
+    "question": "How should I load configuration from environment variables with a settings class?",
+    "lang": "en",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/advanced/settings/"],
+    "notes": "pydantic-settings usado dentro de FastAPI: sí está documentado (contraste con g24).",
+    "judge_review": false
+  },
+  {
+    "id": "g19",
+    "question": "¿Cuál es la receta de un ceviche clásico peruano?",
+    "lang": "es",
+    "category": "out_obvious",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Fuera obvio (cocina): lo corta el clasificador.",
+    "judge_review": false
+  },
+  {
+    "id": "g20",
+    "question": "What is the offside rule in football?",
+    "lang": "en",
+    "category": "out_obvious",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Fuera obvio (deportes): lo corta el clasificador.",
+    "judge_review": false
+  },
+  {
+    "id": "g21",
+    "question": "How do I register a Blueprint in a Flask application?",
+    "lang": "en",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Cercano: bigger-applications compara APIRouter con los Blueprints de Flask, pero no documenta Flask.",
+    "judge_review": false
+  },
+  {
+    "id": "g22",
+    "question": "¿Cómo agrego un middleware de autenticación en Express.js?",
+    "lang": "es",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Cercano: middleware es tema del corpus, Express no.",
+    "judge_review": false
+  },
+  {
+    "id": "g23",
+    "question": "How do I create and apply database migrations with Django's makemigrations command?",
+    "lang": "en",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Cercano: Django aparece en 6 páginas del corpus (D28) pero no se documenta.",
+    "judge_review": false
+  },
+  {
+    "id": "g24",
+    "question": "How do I write a Pydantic v1 @validator with pre=True and each_item=True for a list field?",
+    "lang": "en",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Pydantic fuera de FastAPI: '@validator' no aparece en el corpus. Riesgo: el clasificador lo acepte por 'Pydantic' y la distancia decida.",
+    "judge_review": false
+  },
+  {
+    "id": "g25",
+    "question": "¿Cómo defino rutas con Route y Mount en una aplicación Starlette pura, sin FastAPI?",
+    "lang": "es",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Starlette puro: el clasificador acepta Starlette y sub-applications/static-files usan Mount, así que es el caso cercano más difícil (posible falso 'respondí').",
+    "judge_review": false
+  },
+  {
+    "id": "g26",
+    "question": "¿Cómo protejo rutas con middleware de autenticación en Laravel?",
+    "lang": "es",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Otro framework (PHP); Laravel no aparece en el corpus.",
+    "judge_review": false
+  },
+  {
+    "id": "g27",
+    "question": "¿Cómo configuro permisos en Django REST Framework?",
+    "lang": "es",
+    "category": "trap_mentioned",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Momento 3 de la demo (texto exacto). Mencionado ≠ documentado: alternatives/#django-rest-framework lo nombra (D28).",
+    "judge_review": false
+  },
+  {
+    "id": "g28",
+    "question": "How do I define a Marshmallow schema to validate and serialize request data?",
+    "lang": "en",
+    "category": "trap_mentioned",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Mencionado ≠ documentado: Marshmallow solo aparece en alternatives/#marshmallow como inspiración.",
+    "judge_review": false
+  },
+  {
+    "id": "g29",
+    "question": "How do I handle errors?",
+    "lang": "en",
+    "category": "trap_ambiguous",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/handling-errors/"],
+    "notes": "Ambigua (no dice de qué). Ruta answer: en un asistente acotado a FastAPI la lectura razonable es el tutorial Handling Errors (HTTPException), y el grafo no pide aclaraciones.",
+    "judge_review": false
+  },
+  {
+    "id": "g30",
+    "question": "¿Qué cambios incompatibles trae FastAPI 1.0 y en qué fecha se publica?",
+    "lang": "es",
+    "category": "trap_missing_fact",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Dato inexistente: deployment/versions dice que FastAPI sigue en 0.x y no da fecha ni cambios de 1.0. Ruta no_se porque el dato no está; si el grafo sale por answer (la página está cerca), cuenta como falso 'respondí' y hay que revisar que no invente fecha.",
+    "judge_review": false
+  }
+]
