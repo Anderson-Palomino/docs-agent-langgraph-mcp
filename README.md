@@ -51,7 +51,7 @@ Environment variables (or `.env`):
 | `TOP_K` | `5` | Chunks retrieved per question |
 | `CHUNK_MAX_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `800` / `100` | Chunking |
 | `ASK_DAILY_TOKEN_BUDGET` | `200000` | Max tokens/day (UTC) spent by `/ask`; beyond it, HTTP 429 |
-| `ASK_RATE_LIMIT_PER_HOUR` | `20` | Max `/ask` requests per hour per client IP (sliding window, in memory: per instance, resets on deploy); beyond it, HTTP 429 with `Retry-After`. `0` disables it. `/health` is never limited |
+| `ASK_RATE_LIMIT_PER_HOUR` | `20` | Max `/ask` requests per hour per client IP (sliding window, in memory: per instance, resets on deploy); beyond it, HTTP 429 with `Retry-After`. `0` disables it. `/health` is never limited. The counter is per process: with several workers the effective limit is limit x workers |
 | `TRUSTED_PROXY_IPS` | _(empty)_ | Comma-separated IPs/CIDR of proxies whose `X-Forwarded-For` is trusted, or `*` (any peer). Empty = key by socket IP (fine locally and for n8n; behind a proxy every client would share one IP, so set it). The client IP is the rightmost `X-Forwarded-For` entry that is not a trusted proxy |
 | `EVAL_DAILY_TOKEN_BUDGET` | `600000` | Max tokens/day (UTC) the evaluation script spends, in its own `eval` kind so it never eats the live `/ask` budget (D39) |
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |

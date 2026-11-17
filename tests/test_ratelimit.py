@@ -1,6 +1,8 @@
+import logging
+
 import pytest
 
-from docs_agent.ratelimit import SlidingWindowLimiter, client_ip, parse_trusted
+from docs_agent.ratelimit import SlidingWindowLimiter, client_ip, limit_key, parse_trusted
 
 
 class FakeClock:
@@ -79,7 +81,7 @@ def test_limit_zero_never_blocks():
     assert all(lim.hit("a") is None for _ in range(100))
 
 
-def test_limiter_purges_empty_keys():
+def test_limiter_purges_expired_keys_from_front():
     clock = FakeClock()
     lim = SlidingWindowLimiter(5, 10, clock)
     for i in range(50):
@@ -87,3 +89,42 @@ def test_limiter_purges_empty_keys():
     clock.now += 11
     lim.hit("fresh")
     assert list(lim._hits) == ["fresh"]
+
+
+def test_limiter_purge_keeps_active_keys_ordered_by_last_hit():
+    clock = FakeClock()
+    lim = SlidingWindowLimiter(5, 10, clock)
+    lim.hit("a")
+    clock.now += 6
+    lim.hit("b")
+    clock.now += 6  # a vencida, b no
+    lim.hit("c")
+    assert list(lim._hits) == ["b", "c"]
+    clock.now += 1
+    lim.hit("b")  # b se refresca y pasa al final
+    assert list(lim._hits) == ["c", "b"]
+
+
+def test_limiter_max_keys_evicts_oldest_and_warns_once(caplog):
+    clock = FakeClock()
+    lim = SlidingWindowLimiter(5, 3600, clock, max_keys=3)
+    with caplog.at_level(logging.WARNING, logger="docs_agent.ratelimit"):
+        for k in ["a", "b", "c", "d", "e"]:
+            lim.hit(k)
+            clock.now += 1
+    assert list(lim._hits) == ["c", "d", "e"]
+    assert caplog.text.count("rate limiter full") == 1
+
+
+def test_ipv6_keyed_by_slash_64():
+    assert limit_key("2001:db8:1:2::1") == limit_key("2001:db8:1:2:ffff:ffff:ffff:ffff")
+    assert limit_key("2001:db8:1:2::1") != limit_key("2001:db8:1:3::1")
+    assert limit_key("1.2.3.4") == "1.2.3.4"
+    assert limit_key("testclient") == "testclient"
+
+
+def test_port_is_stripped_from_entries():
+    t = parse_trusted("10.0.0.0/8")
+    assert client_ip("10.0.0.1", "1.2.3.4:5678", t) == "1.2.3.4"
+    assert client_ip("10.0.0.1", "[2001:db8::1]:443", t) == "2001:db8::1"
+    assert client_ip("10.0.0.1:9999", "1.2.3.4", t) == "1.2.3.4"

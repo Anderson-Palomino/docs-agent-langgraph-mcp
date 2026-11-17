@@ -11,10 +11,13 @@ que añadió el proxy de confianza, no el cliente.
 """
 
 import ipaddress
+import logging
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
@@ -45,11 +48,30 @@ def parse_trusted(spec: str) -> TrustedProxies:
     return TrustedProxies(networks=tuple(nets))
 
 
+def _strip_port(value: str) -> str:
+    """Quita el puerto de `1.2.3.4:5678` y `[2001:db8::1]:443`; una IPv6 sin corchetes se deja intacta."""
+    if value.startswith("["):
+        end = value.find("]")
+        return value[1:end] if end != -1 else value
+    if value.count(":") == 1:
+        return value.split(":", 1)[0]
+    return value
+
+
 def _as_ip(value: str | None) -> IPAddress | None:
     try:
-        return ipaddress.ip_address((value or "").strip())
+        return ipaddress.ip_address(_strip_port((value or "").strip()))
     except ValueError:
         return None
+
+
+def limit_key(ip: str) -> str:
+    """Clave del limitador: IPv4 tal cual; IPv6 por su red /64 (un cliente controla todo su /64 y rotaría
+    direcciones). Lo que no es IP (p. ej. "testclient") se usa tal cual."""
+    parsed = _as_ip(ip)
+    if isinstance(parsed, ipaddress.IPv6Address):
+        return str(ipaddress.ip_network(f"{parsed}/64", strict=False))
+    return str(parsed) if parsed is not None else ip
 
 
 def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> str:
@@ -74,13 +96,21 @@ def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxi
 
 
 class SlidingWindowLimiter:
-    """Ventana deslizante por clave, en memoria (por instancia; se reinicia al desplegar). `limit=0` = desactivado."""
+    """Ventana deslizante por clave, en memoria (por proceso/instancia; se reinicia al desplegar). `limit=0` = desactivado.
 
-    def __init__(self, limit: int, window_s: float, clock: Callable[[], float] = time.monotonic):
+    Las claves se mantienen ordenadas por último acierto: las vencidas se purgan desde el frente (O(1) amortizado
+    por petición) y `max_keys` acota la memoria expulsando la clave más antigua (con un aviso, una sola vez).
+    """
+
+    def __init__(
+        self, limit: int, window_s: float, clock: Callable[[], float] = time.monotonic, max_keys: int = 10_000
+    ):
         self.limit = limit
         self.window_s = window_s
+        self.max_keys = max_keys
         self._clock = clock
-        self._hits: dict[str, deque[float]] = {}
+        self._hits: OrderedDict[str, deque[float]] = OrderedDict()
+        self._warned_full = False
 
     def hit(self, key: str) -> float | None:
         """`None` si se permite; si no, segundos hasta que se libere un cupo (para `Retry-After`)."""
@@ -88,18 +118,28 @@ class SlidingWindowLimiter:
             return None
         now = self._clock()
         self._purge(now)
-        q = self._hits.setdefault(key, deque())
+        q = self._hits.get(key)
+        if q is None:
+            if len(self._hits) >= self.max_keys:
+                self._hits.popitem(last=False)
+                if not self._warned_full:
+                    self._warned_full = True
+                    logger.warning("rate limiter full (%d keys): evicting the oldest key", self.max_keys)
+            q = self._hits[key] = deque()
+        cutoff = now - self.window_s
+        while q and q[0] <= cutoff:
+            q.popleft()
         if len(q) >= self.limit:
             return q[0] + self.window_s - now
         q.append(now)
+        self._hits.move_to_end(key)
         return None
 
     def _purge(self, now: float) -> None:
-        """Descarta marcas vencidas y claves vacías para que el dict no crezca sin límite."""
+        """Descarta desde el frente las claves cuyo último acierto ya salió de la ventana."""
         cutoff = now - self.window_s
-        for key in list(self._hits):
-            q = self._hits[key]
-            while q and q[0] <= cutoff:
-                q.popleft()
-            if not q:
-                del self._hits[key]
+        while self._hits:
+            key, q = next(iter(self._hits.items()))
+            if q and q[-1] > cutoff:
+                break
+            del self._hits[key]

@@ -20,8 +20,8 @@ from docs_agent.budget import KIND_ASK, BudgetExceeded, check_budget
 from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
-from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, client_ip, parse_trusted
 from docs_agent.rag.retrieve import corpus_size
+from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, client_ip, limit_key, parse_trusted
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,21 @@ def get_docs_tools(request: Request) -> Any:
     return request.app.state.docs_tools
 
 
+def enforce_rate_limit(request: Request) -> None:
+    """Primer chequeo de `/ask`: dependencia declarada antes que `get_conn`/`get_openai`, así un cliente que
+    excede el límite recibe 429 sin abrir conexión a Postgres ni depender de que la base esté arriba."""
+    limiter, trusted = rate_limit_state(request.app, get_settings())
+    peer = request.client.host if request.client else None
+    ip = client_ip(peer, ",".join(request.headers.getlist("x-forwarded-for")), trusted)
+    retry_after = limiter.hit(limit_key(ip))
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+
+
 class AskRequest(BaseModel):
     question: str
 
@@ -126,24 +141,14 @@ class AskResponse(BaseModel):
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(
-    request: Request,
     req: AskRequest,
     debug: bool = False,
+    _rate: None = Depends(enforce_rate_limit),
     conn: psycopg.Connection = Depends(get_conn),
     client: OpenAI = Depends(get_openai),
     docs_tools: Any = Depends(get_docs_tools),
 ) -> AskResponse:
     settings = get_settings()
-    limiter, trusted = rate_limit_state(request.app, settings)
-    peer = request.client.host if request.client else None
-    ip = client_ip(peer, request.headers.get("x-forwarded-for"), trusted)
-    retry_after = limiter.hit(ip)
-    if retry_after is not None:  # primer chequeo: antes de la clave de OpenAI y del presupuesto
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded",
-            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
-        )
     if not settings.openai_api_key.get_secret_value():
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
     try:
