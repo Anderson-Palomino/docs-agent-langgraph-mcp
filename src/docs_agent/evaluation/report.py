@@ -93,7 +93,7 @@ def metric_rows(run: dict, metrics: dict) -> list[tuple[str, str]]:
     ]
 
 
-def _sweep_table(sweep: list[dict], current: float) -> list[str]:
+def sweep_table(sweep: list[dict], current: float) -> list[str]:
     lines = [
         "| Umbral | Cortados por clasificador | Cortados por umbral | Falsos \"no sé\" (clasificador) "
         "| Falsos \"no sé\" (umbral) | Falsos \"respondí\" | Exactitud de ruta |",
@@ -126,7 +126,7 @@ def render_markdown(run: dict, metrics: dict, sweep: list[dict]) -> str:
     lines += ["", "## Métricas", "", "| Métrica | Valor |", "|---|---|"]
     lines += [f"| {name} | {value} |" for name, value in metric_rows(run, metrics)]
     lines += ["", "## Umbrales (simulación offline sobre `best_distance`)", ""]
-    lines += _sweep_table(sweep, run["threshold"])
+    lines += sweep_table(sweep, run["threshold"])
     return "\n".join(lines) + "\n"
 
 
