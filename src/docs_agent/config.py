@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     mcp_budget_scope: Literal["mcp", "ask", "eval"] = "mcp"  # D29, D39
     mcp_daily_token_budget: int = 100_000
     eval_daily_token_budget: int = 600_000  # D39
+    ask_rate_limit_per_hour: int = 20  # por IP; 0 = desactivado
+    trusted_proxy_ips: str = ""  # IPs/CIDR separados por comas, o "*"; vacío = no confiar en X-Forwarded-For
     mcp_call_timeout_s: float = 15.0  # D30
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr = SecretStr("")

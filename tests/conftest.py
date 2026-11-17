@@ -54,6 +54,21 @@ def _host_database_url(monkeypatch, _ensure_test_db):
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _rate_limit_isolated(monkeypatch):
+    """Rate limit de `/ask` desactivado por defecto en los tests (lo que lea Settings del entorno/.env no
+    cuenta) y estado del limitador limpio antes y después; los tests de rate limit lo activan explícitamente."""
+    from docs_agent.api import app
+
+    monkeypatch.setenv("ASK_RATE_LIMIT_PER_HOUR", "0")
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", "")
+    if hasattr(app.state, "rate_limit"):
+        del app.state.rate_limit
+    yield
+    if hasattr(app.state, "rate_limit"):
+        del app.state.rate_limit
+
+
 LANGSMITH_VARS = ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT")
 
 

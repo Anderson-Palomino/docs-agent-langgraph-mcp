@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -19,6 +20,7 @@ from docs_agent.budget import KIND_ASK, BudgetExceeded, check_budget
 from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
+from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, client_ip, parse_trusted
 from docs_agent.rag.retrieve import corpus_size
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
@@ -36,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     las variables LANGSMITH_*. `wrap_openai` se importa aquí, una sola vez, y no en cada petición.
     """
     settings = get_settings()
+    rate_limit_state(app, settings)  # falla al arrancar si TRUSTED_PROXY_IPS es inválida; avisa si falta
     app.state.tracing = configure_tracing(settings)
     app.state.openai_wrapper = load_openai_wrapper() if app.state.tracing else None
     docs_tools = DocsMCPClient(stdio_connect(settings, "ask"), settings.mcp_call_timeout_s)
@@ -47,6 +50,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="docs-agent", lifespan=lifespan)
+
+RATE_WINDOW_S = 3600.0
+
+
+def rate_limit_state(app: FastAPI, settings: Any) -> tuple[SlidingWindowLimiter, TrustedProxies]:
+    """Limitador y proxies confiables en `app.state`; se crean en el lifespan, o perezosamente si no corrió
+    (TestClient sin `with`), y se rehacen si cambia la configuración."""
+    key = (settings.ask_rate_limit_per_hour, settings.trusted_proxy_ips)
+    current = getattr(app.state, "rate_limit", None)
+    if current is None or current[0] != key:
+        trusted = parse_trusted(settings.trusted_proxy_ips)
+        if settings.ask_rate_limit_per_hour > 0 and not settings.trusted_proxy_ips.strip():
+            logger.warning("rate limit keyed by socket IP; set TRUSTED_PROXY_IPS behind a proxy")
+        current = (key, SlidingWindowLimiter(settings.ask_rate_limit_per_hour, RATE_WINDOW_S), trusted)
+        app.state.rate_limit = current
+    return current[1], current[2]
 
 
 def get_conn() -> Iterator[psycopg.Connection]:
@@ -107,6 +126,7 @@ class AskResponse(BaseModel):
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(
+    request: Request,
     req: AskRequest,
     debug: bool = False,
     conn: psycopg.Connection = Depends(get_conn),
@@ -114,6 +134,16 @@ async def ask(
     docs_tools: Any = Depends(get_docs_tools),
 ) -> AskResponse:
     settings = get_settings()
+    limiter, trusted = rate_limit_state(request.app, settings)
+    peer = request.client.host if request.client else None
+    ip = client_ip(peer, request.headers.get("x-forwarded-for"), trusted)
+    retry_after = limiter.hit(ip)
+    if retry_after is not None:  # primer chequeo: antes de la clave de OpenAI y del presupuesto
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
     if not settings.openai_api_key.get_secret_value():
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
     try:
