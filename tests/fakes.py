@@ -20,14 +20,14 @@ class FakeOpenAI:
         fail_chat: bool = False,
         is_fastapi: bool = True,
         language: str = "en",
-        judge_score: float = 1.0,
+        judge_claims: list | None = None,
         judge_refusal: bool = False,
     ) -> None:
         self.calls: list[dict] = []
         self.parsed = parsed
         self.is_fastapi = is_fastapi  # respuesta del clasificador (`Classification`)
         self.language = language
-        self.judge_score = judge_score  # puntaje del juez (`Judgment`)
+        self.judge_claims = judge_claims  # [(texto, apoyada)]; por defecto una afirmación apoyada
         self.judge_refusal = judge_refusal  # el juez rechaza: `parsed=None` con `refusal`
         self.fail = fail
         self.fail_chat = fail_chat  # falla solo en chat con un OpenAIError que NO es APIError
@@ -61,14 +61,15 @@ class FakeOpenAI:
             raise openai.OpenAIError("could not parse response content as the length limit was reached")
         self.calls.append({"model": model, "messages": messages, "temperature": temperature})
         from docs_agent.agent.classify import Classification
-        from docs_agent.evaluation.judge import Judgment
+        from docs_agent.evaluation.judge import Claim, _JudgeOutput
 
         usage = SimpleNamespace(prompt_tokens=100, completion_tokens=20)
-        if response_format is Judgment and self.judge_refusal:
+        if response_format is _JudgeOutput and self.judge_refusal:
             message = SimpleNamespace(parsed=None, refusal="refused")
             return SimpleNamespace(choices=[SimpleNamespace(message=message)], usage=usage)
-        if response_format is Judgment:
-            parsed = Judgment(score=self.judge_score, unsupported_claims=[], reason="fake")
+        if response_format is _JudgeOutput:
+            pairs = self.judge_claims if self.judge_claims is not None else [("claim", True)]
+            parsed = _JudgeOutput(claims=[Claim(text=t, supported=ok) for t, ok in pairs], reason="fake")
         elif response_format is Classification:
             parsed = Classification(is_fastapi=self.is_fastapi, language=self.language, reason="fake")
         else:

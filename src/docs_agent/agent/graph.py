@@ -97,8 +97,7 @@ def cap_section(text: str) -> str:
     return text[:SECTION_MAX_CHARS] + SECTION_TRUNCATION_MARK
 
 
-_chunks = chunks_from_results  # nombres antiguos, por compatibilidad
-_cap_section = cap_section
+_chunks = chunks_from_results  # nombre antiguo (lo importan tests)
 
 
 def is_budget_error(exc: Exception) -> bool:
