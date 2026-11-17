@@ -34,15 +34,19 @@ class AnswerResult:
     completion_tokens: int
 
 
-def build_messages(question: str, chunks: list[RetrievedChunk], section_text: str | None = None) -> list[dict]:
+def build_context(chunks: list[RetrievedChunk], section_text: str | None = None) -> str:
     """Contexto numerado. Con `section_text`, el fragmento [1] lleva la sección completa de `chunks[0]`
     (misma URL y título) en lugar de su fragmento; el resto de `chunks` va tal cual."""
     contents = [c.content for c in chunks]
     if section_text is not None and chunks:
         contents[0] = section_text
-    context = "\n\n".join(
+    return "\n\n".join(
         f"[{i}] {c.title}\nURL: {c.url}\n{text}" for i, (c, text) in enumerate(zip(chunks, contents), start=1)
     )
+
+
+def build_messages(question: str, chunks: list[RetrievedChunk], section_text: str | None = None) -> list[dict]:
+    context = build_context(chunks, section_text)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Context:\n\n{context}\n\nQuestion: {question}"},
