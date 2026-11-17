@@ -52,7 +52,7 @@ Distribución mínima (del plan): 18 dentro del corpus (9 ES / 9 EN; básicas, i
 
 Las `expected_urls` se toman de URLs reales de la tabla `sections` de la base local (no se escriben a mano): el builder busca la sección candidata en la base y la propone. Se genera `eval/golden_set_review.md` con una tabla (id, pregunta, categoría, ruta esperada, URLs esperadas, notas) para que el dueño la valide. Mientras no esté validada, `evaluate.py` no se corre contra OpenAI. El dueño responde con comentarios sobre la tabla (no edita el JSON); Claude aplica las correcciones al JSON, regenera `golden_set_review.md` y, si hubo cambios de fondo, lo muestra otra vez *(decisión de Claude)*.
 
-Una vez validado, el dueño revisa a mano el puntaje del juez en los 5 casos `judge_review` (ver 5.3).
+Una vez validado, el dueño revisa a mano el puntaje del juez en los 6 casos `judge_review` (ver 5.3).
 
 ### 5.2 `scripts/evaluate.py`
 
@@ -83,7 +83,7 @@ Corre cada caso por el mismo camino que `/ask`: `make_deps` + `build_graph(deps)
 
 Modelo `gpt-4.1-mini` (igual al que responde, nunca más débil), `temperature=0`, salida estructurada con `client.chat.completions.parse` (mismo patrón que `classify.py`): `{"score": float 0..1, "unsupported_claims": [str], "reason": str}`. Recibe la pregunta, el contexto exacto que vio el modelo que respondió (los fragmentos completos de `search_docs` y, si hubo, el texto de `get_section` con el mismo tope de `SECTION_MAX_CHARS`) y la respuesta. Pregunta solo si cada afirmación de la respuesta está apoyada en ese contexto (no si es correcta en el mundo real). Solo se aplica a casos con ruta obtenida `answer`. Sus tokens van al kind `eval` y al tope de la corrida; precio con las mismas tarifas de `pricing.py`.
 
-**Revisión humana:** los 5 casos `judge_review: true` se listan en `eval/results/<fecha>-judge-review.md` (pregunta, contexto resumido con URLs, respuesta, puntaje y motivo del juez, columna vacía para el puntaje del dueño). El dueño los puntúa; la decisión del juez (D38) anota cuánto coincidió (p. ej. "4 de 5 dentro de ±0.2").
+**Revisión humana:** los 6 casos `judge_review: true` se listan en `eval/results/<fecha>-judge-review.md` (pregunta, contexto resumido con URLs, respuesta, puntaje y motivo del juez, columna vacía para el puntaje del dueño). El dueño los puntúa; la decisión del juez (D38) anota cuánto coincidió (p. ej. "5 de 6 dentro de ±0.2").
 
 ### 5.4 Recalibración offline (D36)
 
@@ -117,4 +117,4 @@ Sección "Evaluación": tabla de resultados, cómo correr `scripts/evaluate.py`,
 
 ## 7. Lo que queda al builder
 
-Redacción exacta de las 30 preguntas (dentro de la distribución), el texto del prompt del juez, el formato visual de las tablas, cómo compartir código con `demo_check.py`, y el algoritmo de la ventana deslizante. El dueño valida el golden set y los 5 puntajes del juez; elige el proveedor final después de leer D37.
+Redacción exacta de las 30 preguntas (dentro de la distribución), el texto del prompt del juez, el formato visual de las tablas, cómo compartir código con `demo_check.py`, y el algoritmo de la ventana deslizante. El dueño valida el golden set y los 6 puntajes del juez; elige el proveedor final después de leer D37.
