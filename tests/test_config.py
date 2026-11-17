@@ -32,3 +32,9 @@ def test_settings_repr_hides_langsmith_key():
 def test_threshold_setting_from_env(monkeypatch):
     monkeypatch.setenv("NO_ANSWER_DISTANCE_THRESHOLD", "0.5")
     assert Settings(_env_file=None).no_answer_distance_threshold == 0.5
+
+
+def test_eval_budget_default_and_scope_accepts_eval():
+    s = Settings(_env_file=None, mcp_budget_scope="eval")
+    assert s.eval_daily_token_budget == 600_000
+    assert s.mcp_budget_scope == "eval"

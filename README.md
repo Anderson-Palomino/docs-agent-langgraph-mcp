@@ -51,9 +51,10 @@ Environment variables (or `.env`):
 | `TOP_K` | `5` | Chunks retrieved per question |
 | `CHUNK_MAX_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `800` / `100` | Chunking |
 | `ASK_DAILY_TOKEN_BUDGET` | `200000` | Max tokens/day (UTC) spent by `/ask`; beyond it, HTTP 429 |
+| `EVAL_DAILY_TOKEN_BUDGET` | `600000` | Max tokens/day (UTC) the evaluation script spends, in its own `eval` kind so it never eats the live `/ask` budget (D39) |
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |
 | `NO_ANSWER_DISTANCE_THRESHOLD` | `0.52` | Best cosine distance above which the graph answers "no sé" (D21) |
-| `MCP_BUDGET_SCOPE` / `MCP_DAILY_TOKEN_BUDGET` | `mcp` / `100000` | Which budget the MCP server spends (`mcp` when Claude launches it, `ask` when the API does) and its daily cap (D29) |
+| `MCP_BUDGET_SCOPE` / `MCP_DAILY_TOKEN_BUDGET` | `mcp` / `100000` | Which budget the MCP server spends (`mcp` when Claude launches it, `ask` when the API does, `eval` for the evaluation script) and its daily cap (D29, D39) |
 | `MCP_CALL_TIMEOUT_S` | `15` | Per-call timeout of the graph's MCP client; the server's OpenAI timeout is derived from it (D30) |
 | `PRICE_CHAT_INPUT_PER_MTOK` / `PRICE_CHAT_OUTPUT_PER_MTOK` / `PRICE_EMBEDDING_PER_MTOK` | `0.40` / `1.60` / `0.02` | USD per million tokens, used by `scripts/demo_check.py` to report cost |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` | `false` / - / `docs-agent` | Optional tracing (see below) |

@@ -11,19 +11,24 @@ from typing import Any
 import psycopg
 
 from docs_agent.agent.graph import AgentDeps
-from docs_agent.budget import KIND_ASK, check_budget, record_usage
+from docs_agent.budget import KIND_ASK, check_budget, daily_limit, record_usage
 from docs_agent.config import Settings
 
 RUN_NAME = "ask"
 
 
-def make_deps(conn: psycopg.Connection, client: Any, tools: Any, settings: Settings) -> AgentDeps:
-    """Dependencias del grafo con el chequeo de presupuesto `ask` (el servidor MCP usa el mismo kind, D29)."""
+def make_deps(
+    conn: psycopg.Connection, client: Any, tools: Any, settings: Settings, kind: str = KIND_ASK
+) -> AgentDeps:
+    """Dependencias del grafo con el chequeo de presupuesto del kind (`ask` por defecto; `eval` en la evaluación, D39).
+
+    El servidor MCP usa el mismo kind vía `MCP_BUDGET_SCOPE` (D29).
+    """
     return AgentDeps(
         openai=client,
         tools=tools,
         settings=settings,
-        check_budget=lambda: check_budget(conn, KIND_ASK, settings.ask_daily_token_budget),
+        check_budget=lambda: check_budget(conn, kind, daily_limit(settings, kind)),
     )
 
 
@@ -35,14 +40,14 @@ def invoke_config(question: str, **metadata: Any) -> dict:
     return {"run_name": RUN_NAME, "metadata": {"question": question, **metadata}}
 
 
-def record_spent(conn: psycopg.Connection, deps: AgentDeps) -> None:
+def record_spent(conn: psycopg.Connection, deps: AgentDeps, kind: str = KIND_ASK) -> None:
     """Registra los tokens de chat ya gastados (clasificador y respuesta, solo llamadas que volvieron).
 
     Va en `invoke_recording`: cuenta también si el grafo falló. Los embeddings los registró el servidor MCP en el
-    mismo kind (scope `ask`).
+    mismo kind (scope `ask` o `eval`).
     """
     if deps.spent["chat_tokens"]:
-        record_usage(conn, KIND_ASK, deps.spent["chat_tokens"])
+        record_usage(conn, kind, deps.spent["chat_tokens"])
 
 
 async def invoke_recording(

@@ -30,7 +30,7 @@ def openai_limits(settings: Settings) -> tuple[float, int]:
 def _scope_error(exc: ValidationError) -> str | None:
     for err in exc.errors():
         if err.get("loc") and err["loc"][0] == "mcp_budget_scope":
-            return f"invalid MCP_BUDGET_SCOPE: {err.get('input')} (expected mcp|ask)"
+            return f"invalid MCP_BUDGET_SCOPE: {err.get('input')} (expected mcp|ask|eval)"
     return None
 
 

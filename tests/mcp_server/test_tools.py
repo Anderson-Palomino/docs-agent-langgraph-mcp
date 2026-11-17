@@ -109,7 +109,7 @@ def test_search_docs_empty_corpus(db_conn):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("scope, other", [("mcp", "ask"), ("ask", "mcp")])
+@pytest.mark.parametrize("scope, other", [("mcp", "ask"), ("ask", "mcp"), ("eval", "ask")])
 def test_search_docs_records_usage_under_scope(seeded_corpus, db_conn, scope, other):
     search_docs(db_conn, FakeOpenAI(), make_settings(mcp_budget_scope=scope), "request body")
     assert tokens_used_today(db_conn, scope) > 0
@@ -119,7 +119,7 @@ def test_search_docs_records_usage_under_scope(seeded_corpus, db_conn, scope, ot
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "scope, limit_field",
-    [("mcp", "mcp_daily_token_budget"), ("ask", "ask_daily_token_budget")],
+    [("mcp", "mcp_daily_token_budget"), ("ask", "ask_daily_token_budget"), ("eval", "eval_daily_token_budget")],
 )
 def test_search_docs_budget_exhausted_raises(seeded_corpus, db_conn, scope, limit_field):
     settings = make_settings(mcp_budget_scope=scope, **{limit_field: 10})

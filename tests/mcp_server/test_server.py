@@ -33,7 +33,7 @@ def test_main_exits_1_on_invalid_scope():
         env=env, cwd=REPO, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL,
     )
     assert proc.returncode == 1
-    assert "invalid MCP_BUDGET_SCOPE: x (expected mcp|ask)" in proc.stderr
+    assert "invalid MCP_BUDGET_SCOPE: x (expected mcp|ask|eval)" in proc.stderr
     assert proc.stdout == ""
 
 

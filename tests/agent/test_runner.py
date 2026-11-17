@@ -2,7 +2,9 @@
 
 import pytest
 
-from docs_agent.agent.runner import invoke_recording
+from docs_agent.agent.runner import invoke_recording, make_deps, record_spent
+from docs_agent.budget import tokens_used_today
+from docs_agent.config import Settings
 
 
 def test_invoke_recording_keeps_original_error():
@@ -41,3 +43,24 @@ def test_invoke_recording_records_and_propagates_db_error_on_success():
 
     with pytest.raises(psycopg.OperationalError):
         asyncio.run(invoke_recording(invoke, record, lambda m: None))
+
+
+@pytest.mark.parametrize("kind, limit", [(None, 200_000), ("ask", 200_000), ("eval", 600_000)])
+def test_make_deps_checks_budget_of_kind(monkeypatch, kind, limit):
+    calls = []
+    monkeypatch.setattr("docs_agent.agent.runner.check_budget", lambda conn, k, lim: calls.append((k, lim)))
+    kwargs = {} if kind is None else {"kind": kind}
+    deps = make_deps(object(), object(), object(), Settings(_env_file=None), **kwargs)
+    deps.check_budget()
+    assert calls == [(kind or "ask", limit)]
+
+
+@pytest.mark.integration
+def test_record_spent_records_in_kind(db_conn):
+    deps = make_deps(db_conn, object(), object(), Settings(_env_file=None), kind="eval")
+    deps.spent["chat_tokens"] = 123
+    record_spent(db_conn, deps, kind="eval")
+    assert tokens_used_today(db_conn, "eval") == 123
+    assert tokens_used_today(db_conn, "ask") == 0
+    record_spent(db_conn, deps)  # default: ask
+    assert tokens_used_today(db_conn, "ask") == 123

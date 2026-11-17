@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     ask_daily_token_budget: int = 200_000
     ingest_max_tokens: int = 2_000_000
     no_answer_distance_threshold: float = 0.52  # D21
-    mcp_budget_scope: Literal["mcp", "ask"] = "mcp"  # D29
+    mcp_budget_scope: Literal["mcp", "ask", "eval"] = "mcp"  # D29, D39
     mcp_daily_token_budget: int = 100_000
+    eval_daily_token_budget: int = 600_000  # D39
     mcp_call_timeout_s: float = 15.0  # D30
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr = SecretStr("")
