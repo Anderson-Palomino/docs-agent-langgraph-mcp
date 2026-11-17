@@ -52,7 +52,12 @@ class Judgment(BaseModel):
 
 
 class JudgeError(Exception):
-    """El modelo juez rechazó responder (`parsed is None`)."""
+    """El modelo juez rechazó responder (`parsed is None`); lleva los tokens que igual se gastaron."""
+
+    def __init__(self, message: str, prompt_tokens: int = 0, completion_tokens: int = 0):
+        super().__init__(message)
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
 
 
 def _to_judgment(out: _JudgeOutput) -> Judgment:
@@ -98,5 +103,5 @@ def judge_answer(
     )
     message = resp.choices[0].message
     if message.parsed is None:
-        raise JudgeError(message.refusal or "judge refused")
+        raise JudgeError(message.refusal or "judge refused", resp.usage.prompt_tokens, resp.usage.completion_tokens)
     return _to_judgment(message.parsed), resp.usage.prompt_tokens, resp.usage.completion_tokens

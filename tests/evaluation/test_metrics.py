@@ -187,3 +187,13 @@ def test_unsupported_any_rate():
     ])
     assert m["unsupported_any_rate"] == {"num": 1, "den": 2}
     assert compute_metrics([case()])["unsupported_any_rate"] == {"num": 0, "den": 0}
+
+
+def test_faithfulness_n():
+    j = {"score": 0.5, "unsupported_claims": [], "reason": ""}
+    m = compute_metrics([
+        case(judge=j),
+        case(judge=None, judge_error="JudgeError"),
+        case(expected_route="no_se", expected_urls=[], route="no_se", citations=[], judge=None),
+    ])
+    assert m["faithfulness_n"] == {"num": 1, "den": 2}  # juzgadas / respondidas

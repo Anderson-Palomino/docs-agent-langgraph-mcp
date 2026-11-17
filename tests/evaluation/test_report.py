@@ -94,7 +94,8 @@ def test_render_markdown_metricas_y_umbrales():
         "Costo",
     ):
         assert label in md, label
-    assert "1 casos · 1 errores" in md
+    assert "| Casos | 2 casos (1 sin error · 1 error) |" in md
+    assert "| Fidelidad (media del juez) | 0.50 (1 juzgada / 1 respondida) |" in md
     assert "| Exactitud de ruta | 100.0% (1/1) |" in md
     assert "| Respuestas con alguna afirmación no apoyada | 100.0% (1/1) |" in md
     assert "| Costo total de la corrida (todos los casos) | 0.0123 USD |" in md  # incluye los casos con error
@@ -147,3 +148,18 @@ def test_render_judge_review_no_se_y_no_corrido():
     assert "no_se" in md and "no hay respuesta que juzgar" in md
     assert "g31" in md and "no se corrió" in md
     assert md.count("Puntaje del dueño (0-1): ___ · Comentario: ___") == 2
+
+
+def test_casos_plural_y_only_lista():
+    cases = [result("g01"), result("g02")]
+    md = render_markdown(run_info(only=["g01", "g02"]), compute_metrics(cases), threshold_sweep(cases))
+    assert "| Casos | 2 casos (2 sin error · 0 errores) |" in md
+    assert "Solo los casos: g01, g02" in md
+    assert "| Fidelidad (media del juez) | 0.50 (2 juzgadas / 2 respondidas) |" in md
+    one = render_markdown(run_info(), compute_metrics([result("g01")]), [])
+    assert "| Casos | 1 caso (1 sin error · 0 errores) |" in one
+
+
+def test_render_markdown_crash():
+    md = render_markdown(run_info(aborted="crash:OperationalError"), compute_metrics([]), [])
+    assert "crash:OperationalError" in md

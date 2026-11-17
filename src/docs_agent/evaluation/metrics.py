@@ -131,6 +131,8 @@ def compute_metrics(cases: list[dict]) -> dict:
         "source_hit_all_multi": _rate(hit_all, len(multi)),
         "grounded_rate": _rate(grounded, len(obtained_answer)),
         "faithfulness_mean": sum(scores) / len(scores) if scores else None,
+        # Denominador de la fidelidad: respuestas con juicio / respuestas obtenidas (un juez que falló no cuenta).
+        "faithfulness_n": _rate(len(judged), len(obtained_answer)),
         # Respuestas con al menos una afirmación no apoyada, entre las respuestas con juicio.
         "unsupported_any_rate": _rate(unsupported_any, len(judged)),
         "latency_p50_ms": percentile(latencies, 50),

@@ -49,11 +49,29 @@ def _score(value: float | None) -> str:
     return NO_VALUE if value is None else f"{value:.2f}"
 
 
+def _plural(n: int, singular: str, plural: str) -> str:
+    return f"{n} {singular if n == 1 else plural}"
+
+
+def _cases(metrics: dict) -> str:
+    """`30 casos (28 sin error · 2 errores)`."""
+    n, errors = metrics["n"], metrics["n_errors"]
+    return f"{_plural(n + errors, 'caso', 'casos')} ({n} sin error · {_plural(errors, 'error', 'errores')})"
+
+
+def _faithfulness(metrics: dict) -> str:
+    """`0.87 (20 juzgadas / 22 respondidas)`: el denominador deja ver si el juez falló en algún caso."""
+    fn = metrics["faithfulness_n"]
+    judged = _plural(fn["num"], "juzgada", "juzgadas")
+    answered = _plural(fn["den"], "respondida", "respondidas")
+    return f"{_score(metrics['faithfulness_mean'])} ({judged} / {answered})"
+
+
 def metric_rows(run: dict, metrics: dict) -> list[tuple[str, str]]:
     """(métrica, valor) en el orden del README; la usan el Markdown y la tabla de consola."""
     c = metrics["confusion"]
     return [
-        ("Casos", f"{metrics['n']} casos · {metrics['n_errors']} errores"),
+        ("Casos", _cases(metrics)),
         ("Exactitud de ruta", _pct(metrics["route_accuracy"])),
         (
             "Matriz de ruta",
@@ -63,7 +81,7 @@ def metric_rows(run: dict, metrics: dict) -> list[tuple[str, str]]:
         ("Acierto de fuente (al menos una)", _pct(metrics["source_hit_any"])),
         ("Acierto de fuente in_multi (todas)", _pct(metrics["source_hit_all_multi"])),
         ("Citas válidas (grounded)", _pct(metrics["grounded_rate"])),
-        ("Fidelidad (media del juez)", _score(metrics["faithfulness_mean"])),
+        ("Fidelidad (media del juez)", _faithfulness(metrics)),
         ("Respuestas con alguna afirmación no apoyada", _pct(metrics["unsupported_any_rate"])),
         ("Latencia del grafo p50", _ms(metrics["latency_p50_ms"])),
         ("Latencia del grafo p95", _ms(metrics["latency_p95_ms"])),
@@ -103,6 +121,8 @@ def render_markdown(run: dict, metrics: dict, sweep: list[dict]) -> str:
         lines.append(f"Solo los casos: {', '.join(run['only'])}")
     if run.get("aborted"):
         lines.append(f"**Corrida abortada ({run['aborted']}): resultados parciales.**")
+    if run.get("judge") and run.get("judge_model") != run.get("chat_model"):
+        lines.append(f"Aviso: el costo del juez usa las tarifas de `{run['chat_model']}`, no las de `{run['judge_model']}`.")
     lines += ["", "## Métricas", "", "| Métrica | Valor |", "|---|---|"]
     lines += [f"| {name} | {value} |" for name, value in metric_rows(run, metrics)]
     lines += ["", "## Umbrales (simulación offline sobre `best_distance`)", ""]

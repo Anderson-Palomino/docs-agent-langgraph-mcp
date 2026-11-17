@@ -21,8 +21,10 @@ def test_judge_answer_usa_modelo_temperatura_y_manda_todo():
 
 
 def test_judge_answer_rechazo_lanza_judge_error():
-    with pytest.raises(JudgeError):
+    with pytest.raises(JudgeError) as exc:
         judge_answer(FakeOpenAI(judge_refusal=True), "q", "c", "a")
+    # el rechazo igual gastó tokens: viajan en la excepción para contarlos en el presupuesto
+    assert (exc.value.prompt_tokens, exc.value.completion_tokens) == (100, 20)
 
 
 def test_judgment_valida_rango():

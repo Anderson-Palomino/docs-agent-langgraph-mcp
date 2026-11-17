@@ -42,8 +42,14 @@ class PerQuestionOpenAI(FakeOpenAI):
     def _parse_chat(self, model, messages, response_format, temperature=None):
         from docs_agent.agent.classify import Classification
 
+        from docs_agent.evaluation.judge import _JudgeOutput
+
         if response_format is Classification:
             self.is_fastapi = messages[-1]["content"] != Q_OUT
+        if response_format is _JudgeOutput and getattr(self, "judge_fail", False):
+            import openai
+
+            raise openai.OpenAIError("judge down")
         return super()._parse_chat(model, messages, response_format, temperature)
 
 
@@ -174,6 +180,31 @@ def test_run_cases_judge_refusal(ev, db_conn):
     a = results[0]
     assert a["route"] == "answer" and a["judge"] is None and a["judge_error"] == "JudgeError"
     assert a["error"] is None
+    # el rechazo gastó tokens: cuentan en el caso, en el tope y en el presupuesto `eval`
+    assert a["judge_tokens"] == CHAT_TOKENS and a["judge_cost_usd"] > 0
+    assert tokens_used_today(db_conn, "eval") == CHAT_TOKENS * 5
+
+
+def test_run_cases_judge_openai_error(ev, db_conn):
+    client = PerQuestionOpenAI()
+    client.judge_fail = True
+    results, aborted = run(ev, db_conn, client=client)
+    assert aborted is None and len(results) == 3
+    a = results[0]
+    assert a["judge_error"] == "OpenAIError" and a["error"] is None and a["route"] == "answer"
+    assert ev.exit_code(results, aborted, judge=True) == 1  # el juez falló: la fidelidad quedó incompleta
+
+
+def test_run_cases_unexpected_error_marks_case(ev, db_conn):
+    import asyncio
+
+    tools = QuestionTools(raises={Q_OUT: RuntimeError("boom")})
+    partial: list[dict] = []
+    with pytest.raises(RuntimeError):
+        asyncio.run(ev.run_cases(golden_cases(), settings(), db_conn, PerQuestionOpenAI(), tools, judge=True,
+                                 max_tokens=400_000, console=Console(file=io.StringIO()), results=partial))
+    assert [r["id"] for r in partial] == ["g01", "g02"]
+    assert partial[1]["error"] == "RuntimeError" and partial[1]["tokens"] == CHAT_TOKENS
 
 
 def test_run_cases_budget_aborts(ev, db_conn):
@@ -206,7 +237,7 @@ def test_write_outputs_suma_errores_y_comparte_stem(ev, db_conn, tmp_path):
     assert data["metrics"]["n_errors"] == 1
     # El total de todos los casos incluye lo gastado por el caso con error; el de las métricas no.
     assert data["run"]["cost_total_usd_all"] > data["metrics"]["cost_total_usd"]
-    assert "2 casos · 1 errores" in paths[1].read_text(encoding="utf-8")
+    assert "3 casos (2 sin error · 1 error)" in paths[1].read_text(encoding="utf-8")
     assert "## g01" in paths[2].read_text(encoding="utf-8")
 
 
@@ -241,10 +272,15 @@ def test_main_unknown_only_id(ev, no_openai, capsys):
 
 def test_exit_code(ev):
     ok = {"error": None}
-    assert ev.exit_code([ok], None) == 0
-    assert ev.exit_code([ok, {"error": "DocsServerUnavailable"}], None) == 1
-    assert ev.exit_code([ok], "max_tokens") == 2
-    assert ev.exit_code([{"error": "BudgetExceeded"}], "budget") == 2
+    ok = {"error": None, "judge_error": None}
+    assert ev.exit_code([ok], None, judge=True) == 0
+    assert ev.exit_code([ok, {**ok, "error": "DocsServerUnavailable"}], None, judge=True) == 1
+    assert ev.exit_code([ok, {**ok, "judge_error": "JudgeError"}], None, judge=True) == 1
+    assert ev.exit_code([ok, {**ok, "judge_error": "JudgeError"}], None, judge=False) == 0
+    assert ev.exit_code([ok], "max_tokens", judge=True) == 2
+    assert ev.exit_code([{**ok, "judge_error": "BudgetExceeded"}], "budget", judge=True) == 2
+    assert ev.exit_code([{**ok, "error": "BudgetExceeded"}], "budget", judge=True) == 2
+    assert ev.exit_code([ok], "crash:RuntimeError", judge=True) == 1
 
 
 def test_main_happy_path_escribe_salidas(ev, seeded_corpus, tmp_path, monkeypatch, capsys):
@@ -262,14 +298,51 @@ def test_main_happy_path_escribe_salidas(ev, seeded_corpus, tmp_path, monkeypatc
     monkeypatch.setattr(api, "make_openai", lambda wrapper=None: PerQuestionOpenAI())
     monkeypatch.setattr(ev, "RESULTS_DIR", tmp_path / "results")
 
-    async def fake_run(cases, settings, conn, client, judge, max_tokens, console):
-        return await ev.run_cases(cases, settings, conn, client, QuestionTools(), judge, max_tokens, console)
+    async def fake_run(cases, settings, conn, client, judge, max_tokens, console, results):
+        return await ev.run_cases(
+            cases, settings, conn, client, QuestionTools(), judge, max_tokens, console, results=results
+        )
 
     monkeypatch.setattr(ev, "_run", fake_run)
     assert ev.main(["--golden", str(small), "--only", "g01,g02,g03"]) == 0
     names = sorted(p.name for p in (tmp_path / "results").iterdir())
+    md_path = next(p for p in (tmp_path / "results").iterdir() if p.suffix == ".md" and "judge-review" not in p.name)
+    md = md_path.read_text(encoding="utf-8")
+    assert "Solo los casos: g01, g02, g03" in md
+    assert "el costo del juez usa las tarifas de `m`" in md
     assert len(names) == 3 and any(n.endswith("-judge-review.md") for n in names)
     out = capsys.readouterr().out
-    assert "Exactitud de ruta" in out and "3 casos · 0 errores" in out
+    assert "Exactitud de ruta" in out and "3 casos (3 sin error · 0 errores)" in out
+    assert "costo del juez" in out  # chat_model "m" ≠ JUDGE_MODEL: aviso de tarifas
     assert "sk-test" not in out
     assert "tracing LangSmith: apagado" in out
+
+
+def test_main_crash_escribe_parciales(ev, seeded_corpus, tmp_path, monkeypatch, capsys):
+    """Un error inesperado a mitad de corrida: se guardan los parciales con `aborted="crash:<Tipo>"` y sale 1."""
+    from docs_agent import api, config
+
+    small = tmp_path / "small.json"
+    small.write_text(json.dumps([c.model_dump() for c in golden_cases()]), encoding="utf-8")
+    test_settings = Settings(
+        _env_file=None, openai_api_key="sk-test", fastapi_docs_ref="test-ref", top_k=5,
+        no_answer_distance_threshold=0.52, chat_model="gpt-4.1-mini",
+    )
+    monkeypatch.setattr(config, "get_settings", lambda: test_settings)
+    monkeypatch.setattr(api, "make_openai", lambda wrapper=None: PerQuestionOpenAI())
+    monkeypatch.setattr(ev, "RESULTS_DIR", tmp_path / "results")
+
+    async def fake_run(cases, settings, conn, client, judge, max_tokens, console, results):
+        tools = QuestionTools(raises={Q_OUT: RuntimeError("secreto-no-imprimir")})
+        return await ev.run_cases(cases, settings, conn, client, tools, judge, max_tokens, console, results=results)
+
+    monkeypatch.setattr(ev, "_run", fake_run)
+    assert ev.main(["--golden", str(small), "--only", "g01,g02,g03"]) == 1
+    data = json.loads(next((tmp_path / "results").glob("*.json")).read_text(encoding="utf-8"))
+    assert data["run"]["aborted"] == "crash:RuntimeError"
+    assert [c["id"] for c in data["cases"]] == ["g01", "g02"]
+    assert data["run"]["tokens_total"] > 0
+    assert len(list((tmp_path / "results").iterdir())) == 3
+    out = capsys.readouterr().out
+    assert "RuntimeError" in out and "secreto-no-imprimir" not in out
+    assert "costo del juez" not in out  # mismo modelo: sin aviso
