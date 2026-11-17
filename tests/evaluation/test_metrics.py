@@ -173,3 +173,17 @@ def test_either_en_threshold_sweep():
         assert r["false_no_se_classifier"] == 0
         assert r["false_answer"] == 0
         assert r["route_accuracy"] == {"num": 3, "den": 3}
+
+
+def test_unsupported_any_rate():
+    j_ok = {"score": 1.0, "unsupported_claims": [], "reason": ""}
+    j_bad = {"score": 0.5, "unsupported_claims": ["inventada"], "reason": ""}
+    m = compute_metrics([
+        case(judge=j_ok),
+        case(judge=j_bad),
+        case(judge=None),  # sin juicio: fuera del denominador
+        case(expected_route="no_se", expected_urls=[], route="no_se", citations=[], judge=None),
+        case(judge=j_bad, error="DocsServerUnavailable"),  # con error: fuera de todo
+    ])
+    assert m["unsupported_any_rate"] == {"num": 1, "den": 2}
+    assert compute_metrics([case()])["unsupported_any_rate"] == {"num": 0, "den": 0}

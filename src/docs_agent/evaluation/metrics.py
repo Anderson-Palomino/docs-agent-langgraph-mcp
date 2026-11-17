@@ -109,7 +109,9 @@ def compute_metrics(cases: list[dict]) -> dict:
 
     obtained_answer = [c for c in ok if c["route"] == "answer"]
     grounded = sum(1 for c in obtained_answer if c["grounded"])
-    scores = [c["judge"]["score"] for c in obtained_answer if c.get("judge")]
+    judged = [c for c in obtained_answer if c.get("judge")]
+    scores = [c["judge"]["score"] for c in judged]
+    unsupported_any = sum(1 for c in judged if c["judge"]["unsupported_claims"])
 
     latencies = [c["latency_ms"] for c in ok]
     judge_cost = sum(c.get("judge_cost_usd") or 0.0 for c in ok)
@@ -129,6 +131,8 @@ def compute_metrics(cases: list[dict]) -> dict:
         "source_hit_all_multi": _rate(hit_all, len(multi)),
         "grounded_rate": _rate(grounded, len(obtained_answer)),
         "faithfulness_mean": sum(scores) / len(scores) if scores else None,
+        # Respuestas con al menos una afirmación no apoyada, entre las respuestas con juicio.
+        "unsupported_any_rate": _rate(unsupported_any, len(judged)),
         "latency_p50_ms": percentile(latencies, 50),
         "latency_p95_ms": percentile(latencies, 95),
         "cost_total_usd": total,

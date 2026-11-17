@@ -208,6 +208,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "rich" },
     { name = "tiktoken" },
+    { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -229,6 +230,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "rich", specifier = ">=15,<16" },
     { name = "tiktoken", specifier = ">=0.14.0" },
+    { name = "tzdata", specifier = ">=2026.6" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
