@@ -13,14 +13,19 @@ URL = "https://fastapi.tiangolo.com/tutorial/body/"
 
 
 def _case(i: int, category: str, lang: str = "es", judge: bool = False, **overrides) -> dict:
-    answer = category.startswith("in_") or category == "trap_ambiguous"
+    if category.startswith("in_") or category == "trap_ambiguous":
+        route = "answer"
+    elif category == "trap_missing_fact":
+        route = "either"
+    else:
+        route = "no_se"
     case = {
         "id": f"g{i:02d}",
         "question": f"pregunta {i}",
         "lang": lang,
         "category": category,
-        "expected_route": "answer" if answer else "no_se",
-        "expected_urls": [URL] if answer else [],
+        "expected_route": route,
+        "expected_urls": [] if route == "no_se" else [URL],
         "notes": "caso sintético",
         "judge_review": judge,
     }
@@ -29,14 +34,14 @@ def _case(i: int, category: str, lang: str = "es", judge: bool = False, **overri
 
 
 def _valid_set() -> list[dict]:
-    """30 casos que cumplen la distribución: 18 dentro (9/9, 2 multi), 8 fuera, 4 trampa, 5 para el juez."""
+    """30 casos que cumplen la distribución: 18 dentro (9/9, 2 multi), 8 fuera, 4 trampa, 6 para el juez (uno `either`)."""
     cats = ["in_basic"] * 8 + ["in_intermediate"] * 8 + ["in_multi"] * 2
     langs = ["es", "en"] * 9
     cases = [_case(i + 1, c, l, judge=i < 5) for i, (c, l) in enumerate(zip(cats, langs))]
     outs = ["out_obvious"] * 2 + ["out_near"] * 6
     cases += [_case(19 + i, c) for i, c in enumerate(outs)]
     traps = ["trap_mentioned", "trap_mentioned", "trap_ambiguous", "trap_missing_fact"]
-    cases += [_case(27 + i, c) for i, c in enumerate(traps)]
+    cases += [_case(27 + i, c, judge=c == "trap_missing_fact") for i, c in enumerate(traps)]
     return cases
 
 
@@ -80,6 +85,18 @@ def test_judge_review_only_on_answer(tmp_path):
         load_golden(_write(tmp_path, cases))
 
 
+def test_either_requires_urls(tmp_path):
+    cases = _valid_set()
+    cases[29]["expected_urls"] = []
+    with pytest.raises(GoldenSetError, match="g30"):
+        load_golden(_write(tmp_path, cases))
+
+
+def test_judge_review_allowed_on_either(tmp_path):
+    case = load_golden(_write(tmp_path, _valid_set()))[29]
+    assert case.expected_route == "either" and case.judge_review is True
+
+
 def test_load_rejects_unknown_category(tmp_path):
     cases = _valid_set()
     cases[0]["category"] = "in_hard"
@@ -117,7 +134,8 @@ def test_check_distribution_reports_lang_multi_and_trap_types(tmp_path):
     cases[28] = _case(29, "trap_mentioned")  # sin trap_ambiguous
     text = " | ".join(check_distribution(load_golden(_write(tmp_path, cases))))
     assert "in_multi" in text
-    assert "es" in text and "en" in text
+    assert "in_corpus es: 10 casos" in text
+    assert "in_corpus en: 8 casos" in text
     assert "trap_ambiguous" in text
 
 
@@ -137,6 +155,11 @@ def test_real_golden_set_is_valid(demo_moments):
     assert demo_moments[2] in questions
     assert demo_moments[3] in questions
     assert demo_moments[1] not in questions
+    by_id = {c.id: c for c in cases}
+    assert by_id["g01"].expected_urls == ["https://fastapi.tiangolo.com/tutorial/security/get-current-user/"]
+    g30 = by_id["g30"]
+    assert g30.expected_route == "either" and g30.judge_review
+    assert g30.expected_urls == ["https://fastapi.tiangolo.com/deployment/versions/"]
 
 
 @pytest.fixture(scope="module")
@@ -166,3 +189,26 @@ def test_review_render_marks_missing_and_leaves_owner_column_empty(review, tmp_p
     assert "| ✓ |" in rows[1] and rows[1].endswith("|  |")
     assert "| no_se | — | — |" in rows[18]
     assert "in_multi: 1 casos" in md
+    header, separator = md.splitlines()[7:9]
+    assert header.count("|") == separator.count("|") == len(review.COLUMNS) + 1
+
+
+def test_review_settings_error_prints_only_type(review, monkeypatch, capsys):
+    from pydantic import BaseModel, ValidationError
+
+    class _Fake(BaseModel):
+        database_url: int
+
+    try:
+        _Fake(database_url="postgresql://secreto@host/db")
+    except ValidationError as exc:
+        error = exc
+
+    def _boom():
+        raise error
+
+    monkeypatch.setattr(review, "get_settings", _boom)
+    assert review.main([]) == 1
+    err = capsys.readouterr().err
+    assert "ValidationError" in err
+    assert "secreto" not in err

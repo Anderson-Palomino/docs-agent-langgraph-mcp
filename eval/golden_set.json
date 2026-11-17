@@ -5,11 +5,8 @@
     "lang": "es",
     "category": "in_intermediate",
     "expected_route": "answer",
-    "expected_urls": [
-      "https://fastapi.tiangolo.com/tutorial/security/get-current-user/",
-      "https://fastapi.tiangolo.com/tutorial/security/first-steps/"
-    ],
-    "notes": "Momento 2 de la demo (texto exacto). Basta con citar una de las dos páginas de /tutorial/security/; get-current-user es la que responde 'el usuario actual'.",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/security/get-current-user/"],
+    "notes": "Momento 2 de la demo (texto exacto). Exigente a propósito: solo cuenta citar get-current-user, la página que responde 'el usuario actual' (validación del dueño).",
     "judge_review": true
   },
   {
@@ -306,9 +303,9 @@
     "question": "¿Qué cambios incompatibles trae FastAPI 1.0 y en qué fecha se publica?",
     "lang": "es",
     "category": "trap_missing_fact",
-    "expected_route": "no_se",
-    "expected_urls": [],
-    "notes": "Dato inexistente: deployment/versions dice que FastAPI sigue en 0.x y no da fecha ni cambios de 1.0. Ruta no_se porque el dato no está; si el grafo sale por answer (la página está cerca), cuenta como falso 'respondí' y hay que revisar que no invente fecha.",
-    "judge_review": false
+    "expected_route": "either",
+    "expected_urls": ["https://fastapi.tiangolo.com/deployment/versions/"],
+    "notes": "Dato inexistente: deployment/versions dice que FastAPI sigue en 0.x y no da fecha ni cambios de 1.0. Ruta either: no_se es correcto; answer es correcto solo si cita deployment/versions y no inventa fecha ni cambios (lo revisa el juez).",
+    "judge_review": true
   }
 ]

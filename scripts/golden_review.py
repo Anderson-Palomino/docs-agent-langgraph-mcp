@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import psycopg
+from pydantic import ValidationError
 
 from docs_agent.config import get_settings
 from docs_agent.db import connect
@@ -24,7 +25,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_GOLDEN = ROOT / "eval" / "golden_set.json"
 DEFAULT_OUT = ROOT / "eval" / "golden_set_review.md"
-HEADER = "| id | categoría | lang | pregunta | ruta esperada | URLs esperadas | ¿existe? | notas | comentario del dueño |"
+COLUMNS = (
+    "id", "categoría", "lang", "pregunta", "ruta esperada", "URLs esperadas", "¿existe?", "notas", "comentario del dueño",
+)
 EXIT_FAILED = 1
 
 
@@ -50,8 +53,8 @@ def render_review(cases: list[GoldenCase], known_urls: set[str], problems: list[
         "",
         f"Casos: {len(cases)}. Distribución: {'completa' if not problems else '; '.join(problems)}.",
         "",
-        HEADER,
-        "|" + "---|" * HEADER.count(" | ") + "---|",
+        "| " + " | ".join(COLUMNS) + " |",
+        "|" + "---|" * len(COLUMNS),
     ]
     for c in cases:
         urls = "<br>".join(c.expected_urls) or "—"
@@ -85,6 +88,9 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_FAILED
     try:
         known = _known_urls()
+    except ValidationError as exc:  # Settings inválido: solo el tipo, nunca valores del entorno
+        print(f"configuración inválida: {type(exc).__name__}", file=sys.stderr)
+        return EXIT_FAILED
     except psycopg.Error as exc:
         print(f"no se pudo leer sections de la base local: {type(exc).__name__}", file=sys.stderr)
         return EXIT_FAILED

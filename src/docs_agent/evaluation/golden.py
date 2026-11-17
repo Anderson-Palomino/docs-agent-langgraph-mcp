@@ -26,7 +26,8 @@ MIN_IN_MULTI = 2
 OUT_CASES = 8
 TRAP_CASES = 4
 TRAP_TYPES = ("trap_mentioned", "trap_ambiguous", "trap_missing_fact")
-JUDGE_REVIEW_CASES = 5
+JUDGE_REVIEW_CASES = 6
+JUDGE_ROUTES = ("answer", "either")
 
 
 class GoldenSetError(ValueError):
@@ -38,20 +39,20 @@ class GoldenCase(BaseModel):
     question: str
     lang: Literal["es", "en"]
     category: Category
-    expected_route: Literal["answer", "no_se"]
+    expected_route: Literal["answer", "no_se", "either"]  # `either`: las dos rutas son correctas (spec 5.1)
     expected_urls: list[str]
     notes: str
     judge_review: bool = False
 
     @model_validator(mode="after")
     def _route_matches_urls(self) -> "GoldenCase":
-        """`answer` necesita URLs esperadas; `no_se` no lleva ninguna; el juez solo revisa casos `answer`."""
-        if self.expected_route == "answer" and not self.expected_urls:
-            raise ValueError("expected_route=answer requiere al menos una expected_url")
+        """`answer`/`either` necesitan URLs esperadas; `no_se` no lleva ninguna; el juez solo revisa `answer`/`either`."""
+        if self.expected_route in ("answer", "either") and not self.expected_urls:
+            raise ValueError(f"expected_route={self.expected_route} requiere al menos una expected_url")
         if self.expected_route == "no_se" and self.expected_urls:
             raise ValueError("expected_route=no_se requiere expected_urls vacía")
-        if self.judge_review and self.expected_route != "answer":
-            raise ValueError("judge_review solo aplica a casos con expected_route=answer")
+        if self.judge_review and self.expected_route not in JUDGE_ROUTES:
+            raise ValueError("judge_review solo aplica a casos con expected_route=answer o either")
         return self
 
 
