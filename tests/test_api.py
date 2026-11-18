@@ -1,4 +1,5 @@
 import pytest
+from fastapi import HTTPException
 
 from docs_agent.budget import KIND_ASK, record_usage, tokens_used_today
 
@@ -295,3 +296,167 @@ def test_ask_answer_failure_records_only_classifier(make_client, seeded_corpus, 
     embedding_tokens = sum(len(c["input"][0].split()) for c in fake.calls if "input" in c)
     assert embedding_tokens > 0
     assert tokens_used_today(db_conn, KIND_ASK) == 120 + embedding_tokens
+
+
+# --- Rate limit por IP (Task 7) ---
+
+
+class CountingTools:
+    """Doble de herramientas que cuenta llamadas: un 429 por rate limit no debe tocar el grafo."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def call(self, tool, args):
+        from docs_agent.agent.mcp_client import DocsServerUnavailable
+
+        self.calls += 1
+        raise DocsServerUnavailable("down")
+
+
+def _peer_client(peer_ip):
+    from fastapi.testclient import TestClient
+
+    from docs_agent.api import app
+
+    return TestClient(app, client=(peer_ip, 50000))
+
+
+def test_ask_rate_limit_429_with_retry_after(make_client, seeded_corpus):
+    from tests.fakes import FakeOpenAI
+
+    tools = CountingTools()
+    make_client(FakeOpenAI(), tools=tools, ask_rate_limit_per_hour=2)
+    c = _peer_client("203.0.113.7")
+    # Las dos primeras pasan el límite y llegan al grafo (el doble responde 503); la tercera se corta antes.
+    for _ in range(2):
+        assert c.post("/ask", json={"question": "x"}).status_code == 503
+    calls_before = tools.calls
+    assert calls_before >= 1
+    r = c.post("/ask", json={"question": "x"})
+    assert r.status_code == 429
+    assert r.json()["detail"] == "Rate limit exceeded"
+    assert int(r.headers["Retry-After"]) >= 1
+    assert tools.calls == calls_before
+
+
+def test_ask_rate_limit_is_first_check(make_client):
+    """Sin clave de OpenAI y con el límite agotado, gana el 429 del rate limit, no el 503."""
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1)
+    c = _peer_client("203.0.113.8")
+    assert c.post("/ask", json={"question": "x"}).status_code == 503
+    r = c.post("/ask", json={"question": "x"})
+    assert r.status_code == 429 and r.json()["detail"] == "Rate limit exceeded"
+
+
+def test_ask_rate_limit_other_ip_via_trusted_proxy_passes(make_client):
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8")
+    c = _peer_client("10.0.0.1")
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 503
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 429
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 503
+
+
+def test_ask_rate_limit_xff_ignored_without_trusted_proxy(make_client):
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1)
+    c = _peer_client("203.0.113.9")
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 503
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 429
+
+
+def test_health_never_rate_limited(make_client):
+    from tests.fakes import FakeOpenAI
+
+    c = make_client(FakeOpenAI(), ask_rate_limit_per_hour=1)
+    for _ in range(5):
+        assert c.get("/health").status_code == 200
+
+
+def test_startup_warns_when_rate_limit_without_trusted_proxies(monkeypatch, caplog):
+    import logging
+
+    from fastapi.testclient import TestClient
+
+    from docs_agent import api
+    from docs_agent.config import Settings
+
+    msg = "rate limit keyed by socket IP; set TRUSTED_PROXY_IPS behind a proxy"
+    monkeypatch.setattr(api, "get_settings", lambda: Settings(_env_file=None, ask_rate_limit_per_hour=5))
+    with caplog.at_level(logging.WARNING, logger="docs_agent.api"), TestClient(api.app):
+        pass
+    assert msg in caplog.text
+
+    caplog.clear()
+    del api.app.state.rate_limit
+    monkeypatch.setattr(
+        api, "get_settings", lambda: Settings(_env_file=None, ask_rate_limit_per_hour=5, trusted_proxy_ips="*")
+    )
+    with caplog.at_level(logging.WARNING, logger="docs_agent.api"), TestClient(api.app):
+        pass
+    assert msg not in caplog.text
+
+
+def test_startup_fails_on_invalid_trusted_proxy_ips(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from docs_agent import api
+    from docs_agent.config import Settings
+
+    monkeypatch.setattr(api, "get_settings", lambda: Settings(_env_file=None, trusted_proxy_ips="not-an-ip"))
+    with pytest.raises(ValueError):
+        with TestClient(api.app):
+            pass
+
+
+def test_ask_rate_limit_precedes_db_dependency(make_client):
+    """Con el límite agotado, 429 aunque la base esté caída, y sin abrir ninguna conexión."""
+    from docs_agent.api import app, get_conn
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1)
+    c = _peer_client("203.0.113.20")
+    assert c.post("/ask", json={"question": "x"}).status_code == 503  # consume el cupo (sin clave de OpenAI)
+    opened = []
+
+    def broken_conn():
+        opened.append(1)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    app.dependency_overrides[get_conn] = broken_conn
+    r = c.post("/ask", json={"question": "x"})
+    assert r.status_code == 429 and r.json()["detail"] == "Rate limit exceeded"
+    assert opened == []
+
+
+def test_ask_rate_limit_uses_all_xff_header_lines(make_client):
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8")
+    c = _peer_client("10.0.0.1")
+    # Dos líneas de cabecera: la primera la controla el cliente; cuenta la última (la del proxy).
+    h1 = [("X-Forwarded-For", "6.6.6.6"), ("X-Forwarded-For", "1.1.1.1")]
+    h2 = [("X-Forwarded-For", "7.7.7.7"), ("X-Forwarded-For", "1.1.1.1")]
+    assert c.post("/ask", json={"question": "x"}, headers=h1).status_code == 503
+    assert c.post("/ask", json={"question": "x"}, headers=h2).status_code == 429
+
+
+def test_ask_rate_limit_ipv6_same_slash_64_shares_quota(make_client):
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8")
+    c = _peer_client("10.0.0.1")
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:2::1"}).status_code == 503
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:2::99"}).status_code == 429
+    assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:3::1"}).status_code == 503
+
+
+def test_root_redirects_to_docs(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 307
+    assert r.headers["location"] == "/docs"

@@ -1,8 +1,14 @@
 """Daily token budget, accounted in Postgres. The day is the UTC date."""
 
+from typing import TYPE_CHECKING
+
 import psycopg
 
+if TYPE_CHECKING:  # solo para el tipo: `config` no importa `budget`, pero así no se acopla
+    from docs_agent.config import Settings
+
 KIND_ASK = "ask"
+KIND_EVAL = "eval"  # D39: la evaluación gasta su propio cupo diario, no el de `/ask`
 KIND_INGEST = "ingest"
 KIND_MCP = "mcp"
 
@@ -40,3 +46,14 @@ def check_budget(conn: psycopg.Connection, kind: str, limit: int) -> None:
     used = tokens_used_today(conn, kind)
     if used >= limit:
         raise BudgetExceeded(used, limit)
+
+
+def daily_limit(settings: "Settings", kind: str) -> int:
+    """Tope diario de tokens del kind: único lugar del mapeo kind→límite (`ask`, `eval`, `mcp`); un kind desconocido lanza `ValueError`."""
+    if kind == KIND_ASK:
+        return settings.ask_daily_token_budget
+    if kind == KIND_EVAL:
+        return settings.eval_daily_token_budget
+    if kind == KIND_MCP:
+        return settings.mcp_daily_token_budget
+    raise ValueError(f"kind sin tope diario: {kind!r}")

@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "rich>=15,<16",
     "tiktoken>=0.14.0",
+    "tzdata>=2026.6",
     "uvicorn[standard]>=0.54.0",
 ]
 

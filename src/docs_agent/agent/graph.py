@@ -82,7 +82,7 @@ def _dedupe_by_url(results: list[dict]) -> list[dict]:
     return out
 
 
-def _chunks(results: list[dict]) -> list[RetrievedChunk]:
+def chunks_from_results(results: list[dict]) -> list[RetrievedChunk]:
     """Contexto de la respuesta: el fragmento completo de cada resultado (como en la Semana 1), no el snippet."""
     return [
         RetrievedChunk(id=i, url=r["url"], title=r["title"], content=r["content"], distance=r["distance"])
@@ -90,10 +90,14 @@ def _chunks(results: list[dict]) -> list[RetrievedChunk]:
     ]
 
 
-def _cap_section(text: str) -> str:
+def cap_section(text: str) -> str:
+    """Tope de la sección completa que entra al contexto (público: el juez de fidelidad usa el mismo)."""
     if len(text) <= SECTION_MAX_CHARS:
         return text
     return text[:SECTION_MAX_CHARS] + SECTION_TRUNCATION_MARK
+
+
+_chunks = chunks_from_results  # nombre antiguo (lo importan tests)
 
 
 def is_budget_error(exc: Exception) -> bool:
@@ -143,7 +147,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         tools_used = list(state["tools_used"])
         try:
             section = await deps.tools.call("get_section", {"url": results[0]["url"]})
-            section_text = _cap_section(section["content"])
+            section_text = cap_section(section["content"])
             tools_used.append("get_section")
         except (DocsToolError, DocsServerUnavailable) as exc:  # DocsToolTimeout es DocsServerUnavailable
             if is_budget_error(exc):
@@ -158,7 +162,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
             answer_question,
             deps.openai,
             state["question"],
-            _chunks(results),
+            chunks_from_results(results),
             settings.chat_model,
             section_text,
         )

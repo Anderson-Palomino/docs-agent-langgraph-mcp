@@ -51,9 +51,12 @@ Environment variables (or `.env`):
 | `TOP_K` | `5` | Chunks retrieved per question |
 | `CHUNK_MAX_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `800` / `100` | Chunking |
 | `ASK_DAILY_TOKEN_BUDGET` | `200000` | Max tokens/day (UTC) spent by `/ask`; beyond it, HTTP 429 |
+| `ASK_RATE_LIMIT_PER_HOUR` | `20` | Max `/ask` requests per hour per client IP (sliding window, in memory: per instance, resets on deploy); beyond it, HTTP 429 with `Retry-After`. `0` disables it. `/health` is never limited. The counter is per process: with several workers the effective limit is limit x workers |
+| `TRUSTED_PROXY_IPS` | _(empty)_ | Comma-separated IPs/CIDR of proxies whose `X-Forwarded-For` is trusted, or `*` (any peer). Empty = key by socket IP (fine locally and for n8n; behind a proxy every client would share one IP, so set it). The client IP is the rightmost `X-Forwarded-For` entry that is not a trusted proxy |
+| `EVAL_DAILY_TOKEN_BUDGET` | `600000` | Max tokens/day (UTC) the evaluation script spends, in its own `eval` kind so it never eats the live `/ask` budget (D39) |
 | `INGEST_MAX_TOKENS` | `2000000` | Ingest aborts before embedding if the corpus exceeds this |
 | `NO_ANSWER_DISTANCE_THRESHOLD` | `0.52` | Best cosine distance above which the graph answers "no sé" (D21) |
-| `MCP_BUDGET_SCOPE` / `MCP_DAILY_TOKEN_BUDGET` | `mcp` / `100000` | Which budget the MCP server spends (`mcp` when Claude launches it, `ask` when the API does) and its daily cap (D29) |
+| `MCP_BUDGET_SCOPE` / `MCP_DAILY_TOKEN_BUDGET` | `mcp` / `100000` | Which budget the MCP server spends (`mcp` when Claude launches it, `ask` when the API does, `eval` for the evaluation script) and its daily cap (D29, D39) |
 | `MCP_CALL_TIMEOUT_S` | `15` | Per-call timeout of the graph's MCP client; the server's OpenAI timeout is derived from it (D30) |
 | `PRICE_CHAT_INPUT_PER_MTOK` / `PRICE_CHAT_OUTPUT_PER_MTOK` / `PRICE_EMBEDDING_PER_MTOK` | `0.40` / `1.60` / `0.02` | USD per million tokens, used by `scripts/demo_check.py` to report cost |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` | `false` / - / `docs-agent` | Optional tracing (see below) |
@@ -180,6 +183,45 @@ uv run python scripts/demo_check.py --q "your question" --skip-tests
 
 Exit codes: `0` all good, `1` a check or pytest failed (or server/model error), `2` budget exhausted. It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`.
 
+## Evaluation
+
+Live demo: https://docs-agent-cqpr.onrender.com/docs (interactive API docs; `/` redirects there). It runs on Render's Free plan, so the first request after ~15 minutes idle takes about a minute (cold start). `/ask` is limited to 20 requests per hour per IP and to a daily token budget (D37); beyond either, HTTP 429.
+
+`scripts/evaluate.py` runs the 30-case golden set (`eval/golden_set.json`) through the same path as `/ask` (real MCP server over stdio) and scores it. Results below are from `eval/results/2026-11-17.md` (`gpt-4.1-mini`, judge `gpt-4.1-mini`, threshold 0.52, k=5, FastAPI docs 0.162.0):
+
+| Metric | Value |
+|---|---|
+| Cases | 30 (30 without error) |
+| Route accuracy | 80.0% (24/30) |
+| Route matrix | answer ok 15, no_se ok 9, false "no sé" 4, false "answered" 2 |
+| Source hit (at least one expected URL cited) | 87.5% (14/16) |
+| Source hit, multi-source cases (all expected URLs cited) | 66.7% (2/3) |
+| Valid citations (grounded) | 88.2% (15/17) |
+| Faithfulness (judge mean) | 1.00 (17 judged / 17 answered) |
+| Answers with some unsupported claim | 0.0% (0/17) |
+| Graph latency p50 / p95 | 3,261 ms / 5,412 ms |
+| Cost per question | US$0.0013 (incl. judge; judge US$0.0177 of the US$0.0388 total) |
+| Run tokens (all cases) | 70,141 |
+
+```bash
+uv run python scripts/evaluate.py                          # 30 cases, with judge
+uv run python scripts/evaluate.py --only g01,g05 --no-judge
+uv run python scripts/evaluate.py --golden path.json --max-tokens 200000
+```
+
+- It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`; run it only against the local `docs` database. A full run is ~70k tokens, about US$0.04.
+- Spend goes to its own budget kind, `eval` (`EVAL_DAILY_TOKEN_BUDGET`, D39), so it never eats the live `/ask` budget. `--max-tokens` (default 400,000) caps one run; it is checked before each case, so a run may overshoot it by at most one case.
+- Outputs: `eval/results/<Lima day>.json`, `.md` and `-judge-review.md` (a sheet for manual review of the judge); earlier runs are not overwritten. Exit codes: `0` ok, `1` failure or a case with error, `2` budget.
+
+What the metrics mean, and what they do not measure:
+
+- **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer. The real run scores 24/30 (2 false "answered"), while D36 and its threshold table show 25/30 (1 false "answered") at 0.52: that is an offline simulation, which never counts an `either` case (g30) as an error, whereas the real run judged it with its citations (see D36).
+- **Source hit / grounded**: the cited URLs (normalized) match `expected_urls`, and the citations come from what was retrieved. A right URL does not mean the text says what the answer claims.
+- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. Agreement with a manual review was postponed to Week 4 (owner's review of `eval/results/2026-11-17-judge-review.md`); until then, 1.00 means the judge found no unsupported claims, not verified faithfulness.
+- 30 cases are an orientation, not statistics, and the numbers come from a single run.
+
+Threshold (D36): `NO_ANSWER_DISTANCE_THRESHOLD` stays at 0.52. The 4 false "no sé" are basic questions in Spanish, an embedding gap across languages (English corpus), not a threshold problem; the planned fix (translate the question before embedding) is for Week 4. Judge and metric details: D38.
+
 ## Tests
 
 ```bash
@@ -187,7 +229,7 @@ docker compose up -d db
 uv run pytest -q
 ```
 
-206 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
+305 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
 
 ## Example questions
 

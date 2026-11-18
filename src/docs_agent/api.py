@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import openai
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from openai import OpenAI
 from pydantic import BaseModel, field_validator, model_serializer
 
@@ -20,6 +22,7 @@ from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
+from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, client_ip, limit_key, parse_trusted
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     las variables LANGSMITH_*. `wrap_openai` se importa aquí, una sola vez, y no en cada petición.
     """
     settings = get_settings()
+    rate_limit_state(app, settings)  # falla al arrancar si TRUSTED_PROXY_IPS es inválida; avisa si falta
     app.state.tracing = configure_tracing(settings)
     app.state.openai_wrapper = load_openai_wrapper() if app.state.tracing else None
     docs_tools = DocsMCPClient(stdio_connect(settings, "ask"), settings.mcp_call_timeout_s)
@@ -47,6 +51,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="docs-agent", lifespan=lifespan)
+
+RATE_WINDOW_S = 3600.0
+
+
+def rate_limit_state(app: FastAPI, settings: Any) -> tuple[SlidingWindowLimiter, TrustedProxies]:
+    """Limitador y proxies confiables en `app.state`; se crean en el lifespan, o perezosamente si no corrió
+    (TestClient sin `with`), y se rehacen si cambia la configuración."""
+    key = (settings.ask_rate_limit_per_hour, settings.trusted_proxy_ips)
+    current = getattr(app.state, "rate_limit", None)
+    if current is None or current[0] != key:
+        trusted = parse_trusted(settings.trusted_proxy_ips)
+        if settings.ask_rate_limit_per_hour > 0 and not settings.trusted_proxy_ips.strip():
+            logger.warning("rate limit keyed by socket IP; set TRUSTED_PROXY_IPS behind a proxy")
+        current = (key, SlidingWindowLimiter(settings.ask_rate_limit_per_hour, RATE_WINDOW_S), trusted)
+        app.state.rate_limit = current
+    return current[1], current[2]
 
 
 def get_conn() -> Iterator[psycopg.Connection]:
@@ -73,6 +93,21 @@ def get_openai(request: Request) -> OpenAI:
 def get_docs_tools(request: Request) -> Any:
     """El `DocsMCPClient` del lifespan; los tests lo sobrescriben."""
     return request.app.state.docs_tools
+
+
+def enforce_rate_limit(request: Request) -> None:
+    """Primer chequeo de `/ask`: dependencia declarada antes que `get_conn`/`get_openai`, así un cliente que
+    excede el límite recibe 429 sin abrir conexión a Postgres ni depender de que la base esté arriba."""
+    limiter, trusted = rate_limit_state(request.app, get_settings())
+    peer = request.client.host if request.client else None
+    ip = client_ip(peer, ",".join(request.headers.getlist("x-forwarded-for")), trusted)
+    retry_after = limiter.hit(limit_key(ip))
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
 
 
 class AskRequest(BaseModel):
@@ -109,6 +144,7 @@ class AskResponse(BaseModel):
 async def ask(
     req: AskRequest,
     debug: bool = False,
+    _rate: None = Depends(enforce_rate_limit),
     conn: psycopg.Connection = Depends(get_conn),
     client: OpenAI = Depends(get_openai),
     docs_tools: Any = Depends(get_docs_tools),
@@ -162,6 +198,12 @@ async def ask(
             else None
         ),
     )
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """La URL de la demo abre la documentación interactiva (sin límite, sin base, sin OpenAI)."""
+    return RedirectResponse("/docs")
 
 
 @app.get("/health")

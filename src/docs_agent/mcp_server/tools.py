@@ -7,7 +7,7 @@ import re
 
 import psycopg
 
-from docs_agent.budget import check_budget, record_usage
+from docs_agent.budget import check_budget, daily_limit, record_usage
 from docs_agent.config import Settings
 from docs_agent.ingest.embed import embed_texts
 from docs_agent.ingest.fetch import heading_anchor
@@ -37,9 +37,7 @@ def clamp_k(k: int) -> int:
 
 
 def _budget_limit(settings: Settings) -> int:
-    if settings.mcp_budget_scope == "ask":
-        return settings.ask_daily_token_budget
-    return settings.mcp_daily_token_budget
+    return daily_limit(settings, settings.mcp_budget_scope)
 
 
 def _result(c, include_content: bool) -> dict:
