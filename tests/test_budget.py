@@ -41,3 +41,10 @@ def test_daily_limit_maps_kind_to_setting():
     assert daily_limit(s, KIND_ASK) == s.ask_daily_token_budget == 200_000
     assert daily_limit(s, KIND_EVAL) == s.eval_daily_token_budget == 600_000
     assert daily_limit(s, KIND_MCP) == s.mcp_daily_token_budget == 100_000
+
+
+def test_daily_limit_rejects_unknown_kind():
+    from docs_agent.config import Settings
+
+    with pytest.raises(ValueError):
+        daily_limit(Settings(_env_file=None), "otro")

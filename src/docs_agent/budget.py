@@ -49,9 +49,11 @@ def check_budget(conn: psycopg.Connection, kind: str, limit: int) -> None:
 
 
 def daily_limit(settings: "Settings", kind: str) -> int:
-    """Tope diario de tokens del kind: único lugar del mapeo kind→límite (`ask`, `eval`; el resto usa el de `mcp`)."""
+    """Tope diario de tokens del kind: único lugar del mapeo kind→límite (`ask`, `eval`, `mcp`); un kind desconocido lanza `ValueError`."""
     if kind == KIND_ASK:
         return settings.ask_daily_token_budget
     if kind == KIND_EVAL:
         return settings.eval_daily_token_budget
-    return settings.mcp_daily_token_budget
+    if kind == KIND_MCP:
+        return settings.mcp_daily_token_budget
+    raise ValueError(f"kind sin tope diario: {kind!r}")
