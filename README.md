@@ -183,6 +183,45 @@ uv run python scripts/demo_check.py --q "your question" --skip-tests
 
 Exit codes: `0` all good, `1` a check or pytest failed (or server/model error), `2` budget exhausted. It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`.
 
+## Evaluation
+
+Live demo: https://docs-agent-cqpr.onrender.com/docs (interactive API docs; `/` redirects there). It runs on Render's Free plan, so the first request after ~15 minutes idle takes about a minute (cold start). `/ask` is limited to 20 requests per hour per IP and to a daily token budget (D37); beyond either, HTTP 429.
+
+`scripts/evaluate.py` runs the 30-case golden set (`eval/golden_set.json`) through the same path as `/ask` (real MCP server over stdio) and scores it. Results below are from `eval/results/2026-11-17.md` (`gpt-4.1-mini`, judge `gpt-4.1-mini`, threshold 0.52, k=5, FastAPI docs 0.162.0):
+
+| Metric | Value |
+|---|---|
+| Cases | 30 (30 without error) |
+| Route accuracy | 80.0% (24/30) |
+| Route matrix | answer ok 15, no_se ok 9, false "no sé" 4, false "answered" 2 |
+| Source hit (at least one expected URL cited) | 87.5% (14/16) |
+| Source hit, multi-source cases (all expected URLs cited) | 66.7% (2/3) |
+| Valid citations (grounded) | 88.2% (15/17) |
+| Faithfulness (judge mean) | 1.00 (17 judged / 17 answered) |
+| Answers with some unsupported claim | 0.0% (0/17) |
+| Graph latency p50 / p95 | 3,261 ms / 5,412 ms |
+| Cost per question | US$0.0013 (judge US$0.0177 of the US$0.0388 total) |
+| Run tokens (all cases) | 70,141 |
+
+```bash
+uv run python scripts/evaluate.py                          # 30 cases, with judge
+uv run python scripts/evaluate.py --only g01,g05 --no-judge
+uv run python scripts/evaluate.py --golden path.json --max-tokens 200000
+```
+
+- It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`; run it only against the local `docs` database. A full run is ~70k tokens, about US$0.04.
+- Spend goes to its own budget kind, `eval` (`EVAL_DAILY_TOKEN_BUDGET`, D39), so it never eats the live `/ask` budget. `--max-tokens` (default 400,000) caps one run; it is checked before each case, so a run may overshoot it by at most one case.
+- Outputs: `eval/results/<Lima day>.json`, `.md` and `-judge-review.md` (a sheet for manual review of the judge); earlier runs are not overwritten. Exit codes: `0` ok, `1` failure or a case with error, `2` budget.
+
+What the metrics mean, and what they do not measure:
+
+- **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer.
+- **Source hit / grounded**: the cited URLs (normalized) match `expected_urls`, and the citations come from what was retrieved. A right URL does not mean the text says what the answer claims.
+- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. Agreement with a manual review is still pending the owner's review of `eval/results/2026-11-17-judge-review.md`; no agreement figure is claimed.
+- 30 cases are an orientation, not statistics, and the numbers come from a single run.
+
+Threshold (D36): `NO_ANSWER_DISTANCE_THRESHOLD` stays at 0.52. The 4 false "no sé" are basic questions in Spanish, an embedding gap across languages (English corpus), not a threshold problem; the planned fix (translate the question before embedding) is for Week 4. Judge and metric details: D38.
+
 ## Tests
 
 ```bash

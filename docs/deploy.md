@@ -7,7 +7,7 @@ Resumen: base Postgres con pgvector en Neon, API en Render desde el `Dockerfile`
 ## 0. Antes de empezar
 
 - Cuentas: GitHub (el repo debe estar subido para que Render lo lea), Neon, Render y OpenAI (ya la tienes).
-- Gasto esperado: la ingesta cuesta ~180 000 tokens de embeddings con `text-embedding-3-small` (US$0.02 por millón, tarifa de `Settings`) = unos US$0.004. Neon y Render tienen plan gratis; el servicio gratis de Render se duerme a los 15 min y tarda ~1 min en despertar (US$7/mes con Starter para que no se duerma; confirma el precio al crear el servicio).
+- Gasto esperado: la ingesta real midió ~249 000 tokens de embeddings (1 128 fragmentos, 1 070 secciones) con `text-embedding-3-small` (US$0.02 por millón, tarifa de `Settings`) = unos US$0.005. Neon y Render tienen plan gratis; el servicio gratis de Render se duerme a los 15 min y tarda ~1 min en despertar (US$7/mes con Starter para que no se duerma; confirma el precio al crear el servicio).
 
 ## 1. Tope de gasto en OpenAI (hazlo primero)
 
@@ -22,21 +22,21 @@ Es la única protección que corta aunque el código falle. Según https://devel
 ## 2. Crear la base en Neon
 
 1. Crea una cuenta en https://neon.com y un proyecto (Postgres reciente; región cercana a la que elegirás en Render, por ejemplo US East si Render va en Ohio/Virginia).
-2. En el panel del proyecto, botón **Connect**: copia la cadena de conexión **directa** (el hostname **no** debe contener `-pooler`; si el interruptor "Connection pooling" está activo, apágalo). Termina en `?sslmode=require`; déjala así. Esa es tu `DATABASE_URL` de producción. Trátala como secreto.
+2. En el panel del proyecto, botón **Connect**: copia la cadena de conexión **directa** (el hostname **no** debe contener `-pooler`; si el interruptor "Connection pooling" está activo, apágalo). Déjala tal como la da Neon (conserva los parámetros `sslmode` y `channel_binding`). Esa es tu `DATABASE_URL` de producción. Trátala como secreto: no la pegues en chats ni tickets; si se expone, restablece la contraseña del rol `neondb_owner` en Neon (**Roles**) y actualiza Render.
 3. Crea el esquema. En Neon, **SQL Editor**: pega el contenido completo de `db/init.sql` y ejecútalo (empieza con `CREATE EXTENSION IF NOT EXISTS vector;` y crea `chunks`, `sections` y `token_usage`; es idempotente). Alternativa con `psql` instalado: `psql "<DATABASE_URL>" -f db/init.sql`, pero eso deja la URL en el historial de la terminal; prefiere el SQL Editor.
-4. Comprueba en el SQL Editor: `SELECT extname FROM pg_extension WHERE extname = 'vector';` debe devolver una fila, y `\dt` o `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';` debe listar las tres tablas.
+4. Comprueba en el SQL Editor: `SELECT extname FROM pg_extension WHERE extname = 'vector';` debe devolver una fila, y `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';` debe listar las tres tablas. El SQL Editor de Neon no es `psql`: no uses `\dt` ni otros metacomandos.
 
 ## 3. Ingesta única desde tu máquina
 
-El comando real es `python -m docs_agent.ingest.run` (ver `src/docs_agent/ingest/run.py`). Descarga la documentación de FastAPI 0.162.0 (`FASTAPI_DOCS_REF`), la parte en fragmentos (147 páginas, ~1 128 fragmentos), **calcula los tokens y se aborta antes de llamar a OpenAI si pasan de `INGEST_MAX_TOKENS`** (2 000 000 por defecto; la ingesta real son ~180 000), embebe, **reemplaza** el corpus de esa versión y registra el uso. Se puede repetir sin duplicar.
+El comando real es `python -m docs_agent.ingest.run` (ver `src/docs_agent/ingest/run.py`). Descarga la documentación de FastAPI 0.162.0 (`FASTAPI_DOCS_REF`), la parte en fragmentos (147 páginas, 1 128 fragmentos), **calcula los tokens y se aborta antes de llamar a OpenAI si pasan de `INGEST_MAX_TOKENS`** (2 000 000 por defecto; la ingesta real fueron ~249 000), embebe, **reemplaza** el corpus de esa versión y registra el uso. Se puede repetir sin duplicar.
 
-La `DATABASE_URL` de producción se pasa solo por entorno de ese comando, nunca en un archivo. Las variables de entorno tienen prioridad sobre `.env`, así que `OPENAI_API_KEY` se puede seguir leyendo de tu `.env` local (o pásala igual por entorno si quieres usar la clave de producción).
+Los comandos de abajo son de PowerShell (en Git Bash `$env:X = ...` no funciona; usa la variante Bash). Ojo: `Read-Host` **muestra en pantalla** el valor que pegas (no queda en el historial ni en archivos). La `DATABASE_URL` de producción se pasa solo por entorno de ese comando, nunca en un archivo. Las variables de entorno tienen prioridad sobre `.env`, así que `OPENAI_API_KEY` se puede seguir leyendo de tu `.env` local (o pásala igual por entorno si quieres usar la clave de producción).
 
 PowerShell:
 
 ```powershell
 $env:DATABASE_URL = Read-Host "DATABASE_URL de produccion"   # pega la URL de Neon; no queda en el historial
-$env:INGEST_MAX_TOKENS = "300000"                            # tope de seguridad por encima de los ~180000 esperados
+$env:INGEST_MAX_TOKENS = "300000"                            # tope de seguridad por encima de los ~249000 medidos
 uv run python -m docs_agent.ingest.run
 Remove-Item Env:DATABASE_URL, Env:INGEST_MAX_TOKENS
 ```
@@ -49,25 +49,27 @@ INGEST_MAX_TOKENS=300000 uv run python -m docs_agent.ingest.run
 unset DATABASE_URL
 ```
 
-Salida esperada: `Ingested <n> chunks from fastapi@0.162.0 (<tokens> tokens)` con n cercano a 1 128 y tokens cercano a 180 000. Verifica en el SQL Editor de Neon: `SELECT count(*) FROM chunks;`, `SELECT count(*) FROM sections;` y `SELECT * FROM token_usage;` (una fila `ingest` con los tokens).
+Salida esperada: `Ingested <n> chunks from fastapi@0.162.0 (<tokens> tokens)` con n = 1 128 y tokens cercano a 249 000 (lo medido en producción). Verifica en el SQL Editor de Neon: `SELECT count(*) FROM chunks;`, `SELECT count(*) FROM sections;` y `SELECT * FROM token_usage;` (una fila `ingest` con los tokens).
 
 ## 4. Crear el servicio en Render
 
 1. Cuenta en https://render.com, conecta tu GitHub y elige el repo. **New > Web Service**.
-2. **Language/Runtime: Docker** (usa el `Dockerfile` de la raíz; no hay comando de build ni de inicio que escribir: el `CMD` ya arranca `uvicorn` en el puerto 8000). Rama: la que quieras desplegar (por ejemplo `main` tras el merge).
-3. **Instance type**: Free para probar (se duerme a los 15 min, ~1 min para despertar) o Starter (0.5 CPU / 512 MB, no se duerme).
+2. **Language/Runtime: Docker** (usa el `Dockerfile` de la raíz; no hay comando de build ni de inicio que escribir: el `CMD` ya arranca `uvicorn` en el puerto 8000). Región: **Ohio**, para que coincida con Neon us-east-2. Rama: la que quieras desplegar (por ejemplo `main` tras el merge).
+3. **Instance type**: el formulario propone por defecto el plan de pago Starter (US$7): **elige Free explícitamente** (se duerme a los 15 min, ~1 min para despertar), o deja Starter (0.5 CPU / 512 MB, no se duerme).
 4. **Health Check Path**: `/health`.
 5. **Environment variables** (Render las guarda como secretos del servicio; el valor sale de donde dice la columna):
 
 | Variable | Valor / de dónde sale |
 |---|---|
 | `PORT` | `8000` (no es secreto). Render usa `10000` por defecto y el `Dockerfile` escucha en 8000, así que se declara para que coincidan |
-| `OPENAI_API_KEY` | La clave de producción que creaste en el proyecto con tope (paso 1), desde el panel de OpenAI |
+| `OPENAI_API_KEY` | La clave de producción que creaste en el proyecto con tope (paso 1), desde el panel de OpenAI. En **Restricted permissions** concede solo "Chat completions" y "Embeddings" = Request (el código solo llama `client.chat.completions.parse` y `client.embeddings.create`) |
 | `DATABASE_URL` | La cadena **directa** de Neon (paso 2), con `sslmode=require` |
 | `ASK_DAILY_TOKEN_BUDGET` | Tú lo eliges. Por defecto 200 000 tokens/día (UTC); al agotarse, `/ask` responde 429. No lo subas sin mirar el tope de OpenAI |
 | `ASK_RATE_LIMIT_PER_HOUR` | Tú lo eliges. 20 por defecto (por IP, en memoria, por instancia, se reinicia con cada deploy); `0` lo apaga |
 | `TRUSTED_PROXY_IPS` | `*`. Detrás de Render todas las peticiones llegan del proxy; con `*` la IP del cliente es la última entrada de `X-Forwarded-For` (D37). Sin esto, todos los visitantes comparten un solo contador |
 | `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | Opcionales. Cuenta de LangSmith (clave en Settings > API keys, recomendado "Tracing Only", D34). Déjalas fuera para no enviar trazas |
+
+   Agrégalas **una por una** en Render. El `.env` descargable de Neon trae piezas sueltas (`PGUSER`, `PGPASSWORD`, ...): la app necesita la `DATABASE_URL` única.
 
    Las demás variables (`CHAT_MODEL`, `TOP_K`, `NO_ANSWER_DISTANCE_THRESHOLD`, etc.) tienen valor por defecto: no hace falta definirlas.
 6. **Create Web Service**. El primer build tarda unos minutos (`uv sync`).
