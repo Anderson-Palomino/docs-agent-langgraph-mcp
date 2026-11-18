@@ -454,3 +454,9 @@ def test_ask_rate_limit_ipv6_same_slash_64_shares_quota(make_client):
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:2::1"}).status_code == 503
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:2::99"}).status_code == 429
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:3::1"}).status_code == 503
+
+
+def test_root_redirects_to_docs(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 307
+    assert r.headers["location"] == "/docs"

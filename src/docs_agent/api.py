@@ -10,6 +10,7 @@ from typing import Any
 import openai
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from openai import OpenAI
 from pydantic import BaseModel, field_validator, model_serializer
 
@@ -197,6 +198,12 @@ async def ask(
             else None
         ),
     )
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """La URL de la demo abre la documentación interactiva (sin límite, sin base, sin OpenAI)."""
+    return RedirectResponse("/docs")
 
 
 @app.get("/health")
