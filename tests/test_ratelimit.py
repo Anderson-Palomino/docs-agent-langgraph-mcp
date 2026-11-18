@@ -128,3 +128,38 @@ def test_port_is_stripped_from_entries():
     assert client_ip("10.0.0.1", "1.2.3.4:5678", t) == "1.2.3.4"
     assert client_ip("10.0.0.1", "[2001:db8::1]:443", t) == "2001:db8::1"
     assert client_ip("10.0.0.1:9999", "1.2.3.4", t) == "1.2.3.4"
+
+
+def test_ipv4_mapped_ipv6_keys_by_the_ipv4_address():
+    assert limit_key("::ffff:1.2.3.4") == "1.2.3.4"
+    assert limit_key("::ffff:5.6.7.8") == "5.6.7.8"
+
+
+def test_limiter_is_thread_safe_under_concurrent_hits():
+    """Varios hilos (el threadpool de FastAPI) sobre un limitador chico: sin excepciones y sin pasar el límite."""
+    import itertools
+    import sys
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    limiter = SlidingWindowLimiter(limit=5, window_s=0.001, clock=time.monotonic, max_keys=20)
+    strict = SlidingWindowLimiter(limit=3, window_s=3600, max_keys=1000)
+    counter = itertools.count()
+
+    def worker(_):
+        admitted = 0
+        for _ in range(3000):
+            n = next(counter)
+            limiter.hit(f"k{n % 50}")
+            if strict.hit("solo") is None:
+                admitted += 1
+        return admitted
+
+    previous = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)  # fuerza cambios de hilo a mitad de `hit` para exponer la carrera
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            admitted = sum(pool.map(worker, range(8)))  # relanza cualquier excepción de los hilos
+    finally:
+        sys.setswitchinterval(previous)
+    assert admitted == 3

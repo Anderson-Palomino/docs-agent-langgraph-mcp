@@ -12,6 +12,7 @@ que añadió el proxy de confianza, no el cliente.
 
 import ipaddress
 import logging
+import threading
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
@@ -70,6 +71,8 @@ def limit_key(ip: str) -> str:
     direcciones). Lo que no es IP (p. ej. "testclient") se usa tal cual."""
     parsed = _as_ip(ip)
     if isinstance(parsed, ipaddress.IPv6Address):
+        if parsed.ipv4_mapped is not None:  # ::ffff:1.2.3.4 es un cliente IPv4, no un /64 compartido
+            return str(parsed.ipv4_mapped)
         return str(ipaddress.ip_network(f"{parsed}/64", strict=False))
     return str(parsed) if parsed is not None else ip
 
@@ -100,6 +103,7 @@ class SlidingWindowLimiter:
 
     Las claves se mantienen ordenadas por último acierto: las vencidas se purgan desde el frente (O(1) amortizado
     por petición) y `max_keys` acota la memoria expulsando la clave más antigua (con un aviso, una sola vez).
+    Es seguro entre hilos: FastAPI corre la dependencia síncrona en un threadpool, así que `hit` toma un lock.
     """
 
     def __init__(
@@ -111,11 +115,16 @@ class SlidingWindowLimiter:
         self._clock = clock
         self._hits: OrderedDict[str, deque[float]] = OrderedDict()
         self._warned_full = False
+        self._lock = threading.Lock()
 
     def hit(self, key: str) -> float | None:
         """`None` si se permite; si no, segundos hasta que se libere un cupo (para `Retry-After`)."""
         if self.limit <= 0:
             return None
+        with self._lock:
+            return self._hit_locked(key)
+
+    def _hit_locked(self, key: str) -> float | None:
         now = self._clock()
         self._purge(now)
         q = self._hits.get(key)
