@@ -215,7 +215,7 @@ uv run python scripts/evaluate.py --golden path.json --max-tokens 200000
 
 What the metrics mean, and what they do not measure:
 
-- **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer.
+- **Route accuracy**: the real run scores 24/30 (2 false "answered"), while D36 and its threshold table show 25/30 (1 false "answered") at 0.52: that is an offline simulation, which never counts an `either` case (g30) as an error, whereas the real run judged it with its citations (see D36). It is whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer.
 - **Source hit / grounded**: the cited URLs (normalized) match `expected_urls`, and the citations come from what was retrieved. A right URL does not mean the text says what the answer claims.
 - **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. Agreement with a manual review is still pending the owner's review of `eval/results/2026-11-17-judge-review.md`; no agreement figure is claimed.
 - 30 cases are an orientation, not statistics, and the numbers come from a single run.
@@ -229,7 +229,7 @@ docker compose up -d db
 uv run pytest -q
 ```
 
-206 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
+305 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
 
 ## Example questions
 

@@ -63,7 +63,7 @@ Salida esperada: `Ingested <n> chunks from fastapi@0.162.0 (<tokens> tokens)` co
 |---|---|
 | `PORT` | `8000` (no es secreto). Render usa `10000` por defecto y el `Dockerfile` escucha en 8000, así que se declara para que coincidan |
 | `OPENAI_API_KEY` | La clave de producción que creaste en el proyecto con tope (paso 1), desde el panel de OpenAI. En **Restricted permissions** concede solo "Chat completions" y "Embeddings" = Request (el código solo llama `client.chat.completions.parse` y `client.embeddings.create`) |
-| `DATABASE_URL` | La cadena **directa** de Neon (paso 2), con `sslmode=require` |
+| `DATABASE_URL` | La cadena **directa** de Neon (paso 2), tal como la da Neon (incluye `sslmode` y `channel_binding`) |
 | `ASK_DAILY_TOKEN_BUDGET` | Tú lo eliges. Por defecto 200 000 tokens/día (UTC); al agotarse, `/ask` responde 429. No lo subas sin mirar el tope de OpenAI |
 | `ASK_RATE_LIMIT_PER_HOUR` | Tú lo eliges. 20 por defecto (por IP, en memoria, por instancia, se reinicia con cada deploy); `0` lo apaga |
 | `TRUSTED_PROXY_IPS` | `*`. Detrás de Render todas las peticiones llegan del proxy; con `*` la IP del cliente es la última entrada de `X-Forwarded-For` (D37). Sin esto, todos los visitantes comparten un solo contador |

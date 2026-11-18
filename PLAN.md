@@ -63,5 +63,6 @@ Hecho cuando: el README tiene la tabla de resultados y un link de demo en vivo.
 - [x] S2: grafo de LangGraph funcionando
 - [x] S2: servidor MCP propio probado desde Claude
 - [x] S3: golden set de 30 preguntas y tabla de resultados
-- [x] S3: trazas activas y demo desplegada
+- [x] S3: demo desplegada
+- [ ] S3: trazas en la demo (código listo, D34; LangSmith no configurado en Render)
 - [ ] S4: README en inglés y video de 2 minutos
