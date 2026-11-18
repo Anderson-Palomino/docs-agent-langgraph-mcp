@@ -194,7 +194,7 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
 - **Alternativas:** 0.50 (punto medio; deja ~0.03 sobre la peor válida); 0.45 o menos (rechaza preguntas válidas como OAuth2 y TestClient); 0.55-0.60 (deja pasar más preguntas de fuera). Si el umbral es demasiado alto, preguntas fuera del corpus con contexto pobre llegan al LLM y se arriesga a inventar; si es demasiado bajo, preguntas válidas reciben "no sé".
 - **Por qué:** los errores son asimétricos. Un falso "no sé" a una pregunta válida no tiene otra capa que lo corrija, mientras que una pregunta de fuera que pase el umbral todavía tiene el clasificador del grafo y la regla "mencionar no es documentar". Por eso priorizamos el margen de las preguntas válidas: 0.52 deja ~0.05 sobre la peor válida frente a ~0.03 con 0.50.
 - **Limitaciones:** solo 20 preguntas; el margen total entre grupos es 0.059; la pregunta del ORM de Django queda a 0.007 del umbral (0.5273 vs 0.52) y la protege el clasificador, no la distancia.
-- **Pendiente:** recalibrar en la Semana 3 con el golden set de 30 preguntas.
+- **Pendiente:** recalibrado en la Semana 3 con el golden set de 30 preguntas: se mantiene 0.52, ver D36.
 
 ### D22. Base de tests separada (`docs_test`)
 - **Elegido:** los tests usan siempre la base `docs_test`, en el mismo contenedor Postgres que la demo (`docs`). `Settings.test_database_url` (override con `TEST_DATABASE_URL`) alimenta un fixture autouse que fija `DATABASE_URL`; un fixture de sesión crea `docs_test` si falta (conexión autocommit a la base `postgres`) y aplica `db/init.sql`. Si Postgres no responde, no falla y los tests de integración se saltan como antes. `db_conn` sigue truncando, pero ahora solo `docs_test`.
@@ -285,6 +285,27 @@ Registro para estudiar y explicar en entrevistas. Cada entrada: **qué se eligi�
 - **Alternativas:** endurecer las `instructions` del servidor ("para cualquier pregunta técnica llama primero a `search_docs`"); hacer las dos cosas; no hacer nada y aceptar que Claude responda de memoria lo que no es FastAPI.
 - **Por qué:** un servidor MCP **ofrece** herramientas, no puede **forzar** que el cliente las use. Sus `instructions` son contexto que el cliente puede ponderar, y en el ensayo no bastaron: sin la instrucción del cliente, Claude decidió que la pregunta de Django REST Framework "no es de FastAPI", **no llamó a ninguna herramienta** y explicó los permisos de DRF de memoria (justo lo que el momento 3 de la demo prohíbe). Con la instrucción en el cliente, la misma pregunta hizo `search_docs` → `in_corpus=false` → "la documentación indexada no cubre esto" y ofreció lo que sí está (OAuth2 scopes). Cuándo consultar y qué fuentes aceptar es **política de grounding**, y esa política es del cliente, igual que el razonamiento (D27: el servidor da herramientas de bajo nivel y el cliente decide). Endurecer el servidor sería que dicte conducta fuera de su dominio a todo cliente que lo conecte, y Claude ya había pasado por alto el "Answer ONLY..." que tiene.
 - **Revisar si:** la política tiene que valer en clientes que no controlamos (entonces la única garantía es no exponer herramientas sino una respuesta ya aterrizada, como el MCP de n8n o `/ask`).
+
+### D36. Umbral recalibrado con el golden set: se mantiene 0.52
+- **Elegido:** `no_answer_distance_threshold` sigue en **0.52**. Recalibración offline sobre la corrida real `eval/results/2026-11-17.json` (30 casos, cada uno con su `best_distance`, incluidos los que el clasificador cortó). Tabla completa por caso en `docs/calibracion-umbral.md`. La simulación de la ruta es exacta porque el grafo decide "no sé" si el clasificador dice `out_of_domain` **o** si `best_distance > umbral`.
+- **Clasificador y umbral, por separado:**
+
+| Umbral | Cortados por clasificador | Cortados por umbral | Falsos "no sé" (umbral) | Falsos "respondí" | Ruta correcta |
+|---|---|---|---|---|---|
+| 0.48 | 9 | 7 | 6 | 0 | 24/30 |
+| 0.50 | 9 | 4 | 4 | 1 | 25/30 |
+| **0.52 (actual)** | 9 | 4 | 4 | 1 | 25/30 |
+| 0.55 | 9 | 4 | 4 | 1 | 25/30 |
+| 0.60 | 9 | 3 | 3 | 1 | 26/30 |
+| 0.62 | 9 | 1 | 1 | 1 | 28/30 |
+| 0.70 | 9 | 0 | 0 | 1 | 29/30 |
+
+  Las filas 0.60-0.70 se calcularon aparte con `metrics.threshold_sweep` (fuera del rango 0.48-0.55 del plan) para ver hasta dónde llega el efecto. El clasificador cortó los 9 casos fuera de dominio sin ningún falso "no sé", incluidos dos que la distancia sola habría dejado pasar: g28 Marshmallow (0.3741) y g25 Starlette pura (0.4073). El único falso "respondí" en todas las filas es g24 (Pydantic v1, 0.4899), que el modelo contestó diciendo honestamente que el contexto no lo cubre, sin citas. La exactitud simulada (25/30) difiere de la de la corrida (24/30) porque la simulación nunca cuenta como error un caso `either` (g30) y la corrida sí lo evaluó con sus citas.
+- **Hallazgo:** los 4 falsos "no sé" del umbral son **preguntas básicas en español**: g03 (0.6033), g06 (0.6165), g07 (0.5892) y g09 (0.6666). Ninguna pregunta en inglés válida pasó de 0.4995. Es una brecha **entre idiomas** del embedding (`text-embedding-3-small`, corpus en inglés), no un problema de umbral: ningún valor entre 0.48 y 0.55 los recupera, y para recuperarlos todos hay que subir a 0.67-0.70.
+- **Alternativas:** 0.48 (corta g24 pero agrega 2 falsos "no sé" en inglés: g15 0.4995 y g18 0.4989); subir a 0.62-0.70 (recupera el español en este golden set); traducir la pregunta al inglés antes de embeber.
+- **Por qué:** con el criterio asimétrico de D21 (un falso "no sé" es peor porque no hay otra capa que lo corrija), 0.48 queda descartado, y 0.50-0.55 son equivalentes, así que no hay razón para mover el valor. Subir a 0.62-0.70 mejora esta tabla, pero (1) se elegiría con los mismos 30 casos con los que se mide, sin un conjunto aparte que lo confirme; (2) deja al clasificador LLM como única defensa de dominio para casi todo, cuando el umbral es la capa barata y determinista; (3) ataca el síntoma: la causa es el idioma, y la corrección es traducir antes de embeber, que cambia el grafo (fuera del alcance de esta semana). Después de esa corrección las distancias en español deberían bajar y 0.52 volvería a ser el valor correcto.
+- **Limitaciones:** 30 casos; 4 preguntas válidas en español reciben hoy "no sé" en la demo pública; la tabla se calculó con una sola corrida (las distancias son deterministas para el mismo corpus y modelo de embeddings, la clasificación no del todo).
+- **Pendiente (Semana 4):** traducir la pregunta al inglés (o embeber ambas versiones) antes de la búsqueda y volver a correr `scripts/evaluate.py` y `calibrate_threshold.py --from-results`.
 
 ### D37. Despliegue: Render (API en Docker) + Neon (Postgres con pgvector), con protección de gasto
 - **Elegido:** la API como **servicio web de Render desde el `Dockerfile`** y la base en **Neon** (plan gratis, `CREATE EXTENSION vector`, conexión **directa**, sin `-pooler`). El servidor MCP no se despliega aparte: dentro del contenedor es un **subproceso de la API por stdio** (lo lanza `stdio_params` con el mismo Python y hereda el entorno, incluidos `DATABASE_URL` y `OPENAI_API_KEY`); el servidor MCP para Claude Code/Desktop y n8n sigue **local**. La guía paso a paso está en `docs/deploy.md`. Investigación del 2026-11-17: los precios cambian, hay que releerlos en las URLs de abajo antes de pagar.
