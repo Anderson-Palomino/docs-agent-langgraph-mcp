@@ -250,6 +250,11 @@ def render_judge_review(cases: list[dict], golden: list[GoldenCase], extra_ids: 
     return "\n".join(lines)
 
 
+PROBLEM_UNREADABLE = "fila ilegible"
+PROBLEM_UNANSWERED = "sin responder"
+PROBLEM_UNRECOGNIZED = "valor no reconocido"  # p. ej. "sí." o "sí, pero…": no se adivina, el dueño lo corrige
+
+
 def _split_row(line: str) -> list[str]:
     return [c.strip() for c in re.split(r"(?<!\\)\|", line.strip())]
 
@@ -285,9 +290,18 @@ def parse_review(markdown: str) -> list[dict]:
             continue
         if case_id is None or not in_claims or not line.lstrip().startswith("|"):
             continue
-        cells = _split_row(line)  # ['', n, afirmación, juez, ¿de acuerdo?, nota, '']
-        if len(cells) >= 6 and cells[1].isdigit():
-            rows.append({"case_id": case_id, "n": int(cells[1]), "agree": _agree(cells[4])})
+        num = re.match(r"\|\s*(\d+)\b", line.strip())
+        if not num:
+            continue  # cabecera, separador o texto suelto
+        # Celdas tras la barra inicial: [n, afirmación, juez, ¿de acuerdo?, nota?]; la barra final y la nota
+        # pueden faltar (el dueño las borra al escribir). Si no llega ni la columna de acuerdo, la fila es ilegible.
+        cells = _split_row(line.strip()[1:])
+        row = {"case_id": case_id, "n": int(num.group(1)), "agree": None, "raw": "", "problem": PROBLEM_UNREADABLE}
+        if len(cells) >= 4:
+            row.update(agree=_agree(cells[3]), raw=cells[3], problem=None)
+            if row["agree"] is None:
+                row["problem"] = PROBLEM_UNANSWERED if not cells[3] else PROBLEM_UNRECOGNIZED
+        rows.append(row)
     return rows
 
 

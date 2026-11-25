@@ -44,6 +44,12 @@ def print_score(path: Path) -> int:
     print(f"Coincidencia por afirmación: {s['claims_agree']}/{s['claims_answered']} = {_pct(s['claims_agree'], s['claims_answered'])}")
     print(f"Casos respondidos completos: {s['cases_answered']} de {s['cases_total']}")
     print(f"Coincidencia por caso: {s['case_agree']}/{s['cases_answered']} = {_pct(s['case_agree'], s['cases_answered'])}")
+    problems = [r for r in rows if r.get("problem")]
+    if problems:
+        print("Filas por revisar (cuentan en el total, pero no como respondidas):")
+        for r in problems:
+            raw = f" «{r['raw']}»" if r.get("raw") else ""
+            print(f"  {r['case_id']} #{r['n']}: {r['problem']}{raw}")
     if s["claims_answered"] < s["claims_total"]:
         print("Aviso: la hoja no está completa; los números son parciales.")
     return 0

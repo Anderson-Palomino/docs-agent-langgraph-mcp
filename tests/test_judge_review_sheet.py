@@ -77,6 +77,23 @@ def test_main_score_imprime_coincidencia(sheet, tmp_path, capsys):
     assert "100.0%" in printed  # las 3 respondidas coinciden
 
 
+def test_main_score_lista_filas_problematicas_y_total_intacto(sheet, tmp_path, capsys):
+    res = write_results(tmp_path / "r.json", ["g01", "g02"])
+    out = tmp_path / "hoja.md"
+    sheet.main([str(res), "--out", str(out)])
+    lines = out.read_text(encoding="utf-8").splitlines()
+    rows = [i for i, line in enumerate(lines) if line.startswith("| 1 | c1 |")]
+    lines[rows[0]] = "| 1 | c1 | apoyada | sí"  # sin barra final ni nota: cuenta
+    lines[rows[1]] = "| 1 | c1 | apoyada | sí. | |"  # valor no reconocido
+    out.write_text("\n".join(lines), encoding="utf-8")
+    capsys.readouterr()
+    assert sheet.main(["--score", str(out)]) == 0
+    printed = capsys.readouterr().out
+    assert "1 de 2" in printed  # total sigue en 2
+    assert "g02 #1: valor no reconocido «sí.»" in printed
+    assert "g01 #1" not in printed
+
+
 def test_main_score_sin_respuestas(sheet, tmp_path, capsys):
     res = write_results(tmp_path / "r.json", MARKED)
     out = tmp_path / "hoja.md"

@@ -220,6 +220,32 @@ def test_parse_review_ignora_titulos_y_tablas_de_la_respuesta():
     assert [(r["case_id"], r["n"], r["agree"]) for r in rows] == [("g01", 1, None), ("g01", 2, None)]
 
 
+def sheet_with(*lines: str) -> str:
+    return "\n".join(["## g01 — pregunta", "", "### Afirmaciones del juez", "", HEADER, "|---|---|---|---|---|", *lines, ""])
+
+
+def test_parse_review_acepta_fila_sin_barra_final_ni_nota():
+    rows = parse_review(sheet_with("| 1 | a | apoyada | sí", "| 2 | b | no apoyada | no |", "| 3 | c | apoyada | Si | nota"))
+    assert [(r["n"], r["agree"], r["problem"]) for r in rows] == [(1, True, None), (2, False, None), (3, True, None)]
+
+
+def test_parse_review_fila_ilegible_se_reporta_y_cuenta():
+    rows = parse_review(sheet_with("| 1 | a | apoyada | sí | |", "| 2 texto roto", "| 3 | c | apoyada | no | |"))
+    assert [r["n"] for r in rows] == [1, 2, 3]
+    assert rows[1]["agree"] is None and rows[1]["problem"] == "fila ilegible"
+    s = score_review(rows)
+    assert s["claims_total"] == 3 and s["claims_answered"] == 2
+
+
+def test_parse_review_valor_no_reconocido_y_vacio_se_distinguen():
+    rows = parse_review(sheet_with("| 1 | a | apoyada | sí. | |", "| 2 | b | apoyada | sí, pero | |", "| 3 | c | apoyada | | |"))
+    assert [(r["agree"], r["problem"], r["raw"]) for r in rows] == [
+        (None, "valor no reconocido", "sí."),
+        (None, "valor no reconocido", "sí, pero"),
+        (None, "sin responder", ""),
+    ]
+
+
 def test_score_review_cuenta_y_casos():
     rows = [
         {"case_id": "g01", "n": 1, "agree": True},
