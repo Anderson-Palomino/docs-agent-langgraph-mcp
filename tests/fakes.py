@@ -20,6 +20,7 @@ class FakeOpenAI:
         fail_chat: bool = False,
         is_fastapi: bool = True,
         language: str = "en",
+        search_query: str | None = None,
         judge_claims: list | None = None,
         judge_refusal: bool = False,
     ) -> None:
@@ -27,6 +28,7 @@ class FakeOpenAI:
         self.parsed = parsed
         self.is_fastapi = is_fastapi  # respuesta del clasificador (`Classification`)
         self.language = language
+        self.search_query = search_query  # traducción que devuelve el clasificador (D40)
         self.judge_claims = judge_claims  # [(texto, apoyada)]; por defecto una afirmación apoyada
         self.judge_refusal = judge_refusal  # el juez rechaza: `parsed=None` con `refusal`
         self.fail = fail
@@ -71,7 +73,9 @@ class FakeOpenAI:
             pairs = self.judge_claims if self.judge_claims is not None else [("claim", True)]
             parsed = _JudgeOutput(claims=[Claim(text=t, supported=ok) for t, ok in pairs], reason="fake")
         elif response_format is Classification:
-            parsed = Classification(is_fastapi=self.is_fastapi, language=self.language, reason="fake")
+            parsed = Classification(
+                is_fastapi=self.is_fastapi, language=self.language, reason="fake", search_query=self.search_query
+            )
         else:
             parsed = self.parsed
         if parsed is None:  # por defecto cita la primera URL que aparezca en los mensajes

@@ -1,4 +1,5 @@
-"""Clasificador de dominio: ¿la pregunta es sobre FastAPI? y ¿en qué idioma está? (D31)."""
+"""Clasificador de dominio: ¿la pregunta es sobre FastAPI?, ¿en qué idioma está? (D31) y, si está en
+español, su traducción al inglés para la búsqueda (D40)."""
 
 from typing import Literal
 
@@ -22,6 +23,9 @@ CLASSIFIER_PROMPT = (
     "`is_fastapi` is false.\n"
     "- `language` is the language of the question: \"es\" for Spanish, \"en\" for English; "
     "any other language -> \"en\".\n"
+    "- `search_query`: only if `language` is \"es\", the question translated into English, faithfully: "
+    "do not answer it and do not expand it; keep code identifiers as they are (`Depends`, `status_code`, "
+    "`Query`, ...). It is null if `language` is \"en\".\n"
     "- `reason`: one short sentence explaining the decision."
 )
 
@@ -30,6 +34,9 @@ class Classification(BaseModel):
     is_fastapi: bool
     language: Literal["es", "en"]
     reason: str
+    # Traducción al inglés para la búsqueda (D40). En modo estricto el SDK la marca `required` y quita el
+    # default `None`: lo opcional queda como unión con null, como pide la doc de Structured Outputs.
+    search_query: str | None = None
 
 
 def classify_question(client, question: str, model: str) -> tuple[Classification, int, int]:
@@ -46,5 +53,19 @@ def classify_question(client, question: str, model: str) -> tuple[Classification
     message = resp.choices[0].message
     parsed = message.parsed
     if parsed is None:  # rechazo del modelo: tratar como fuera de dominio, en inglés
-        parsed = Classification(is_fastapi=False, language="en", reason=message.refusal or "refused")
+        parsed = Classification(
+            is_fastapi=False, language="en", reason=message.refusal or "refused", search_query=None
+        )
     return parsed, resp.usage.prompt_tokens, resp.usage.completion_tokens
+
+
+def resolve_search_query(question: str, c: Classification) -> tuple[str, bool]:
+    """Consulta que se usa en la búsqueda y si es una traducción (D40).
+
+    Solo se usa la traducción si la pregunta es en español y la traducción no queda vacía tras `strip()`;
+    en cualquier otro caso (inglés, `None`, vacía) se busca con la pregunta original.
+    """
+    translation = (c.search_query or "").strip()
+    if c.language == "es" and translation:
+        return translation, True
+    return question, False

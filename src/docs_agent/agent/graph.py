@@ -14,7 +14,7 @@ from typing import Any, Callable, Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from docs_agent.agent.classify import classify_question
+from docs_agent.agent.classify import classify_question, resolve_search_query
 from docs_agent.agent.mcp_client import DocsServerUnavailable, DocsToolError
 from docs_agent.config import Settings
 from docs_agent.rag.answer import Citation, answer_question
@@ -37,6 +37,8 @@ Reason = Literal["out_of_domain", "insufficient_context"] | None
 class AgentState(TypedDict, total=False):
     question: str
     language: Literal["es", "en"]
+    search_query: str  # consulta efectivamente usada en `search_docs` (D40)
+    translated: bool  # True si se buscó con la traducción al inglés
     route: Route
     reason: Reason
     classifier_reason: str
@@ -116,8 +118,11 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
         usage = _empty_usage()
         usage["classifier_prompt_tokens"] = prompt_tokens
         usage["classifier_completion_tokens"] = completion_tokens
+        search_query, translated = resolve_search_query(state["question"], c)
         return {
             "language": c.language,
+            "search_query": search_query,
+            "translated": translated,
             "reason": None if c.is_fastapi else "out_of_domain",
             "classifier_reason": c.reason,
             "usage": usage,
@@ -126,7 +131,7 @@ def build_graph(deps: AgentDeps) -> CompiledStateGraph:
 
     async def search(state: AgentState) -> AgentState:
         out = await deps.tools.call(
-            "search_docs", {"query": state["question"], "k": settings.top_k, "include_content": True}
+            "search_docs", {"query": state["search_query"], "k": settings.top_k, "include_content": True}
         )
         usage = {**state["usage"], "embedding_tokens": out.get("embedding_tokens", 0)}
         return {
