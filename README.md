@@ -279,7 +279,7 @@ What the metrics mean, and what they do not measure:
 - **h04 is a retrieval miss, not a threshold problem**: the right page (`header-params`) is not among the top two results, so no reasonable threshold fixes it (D41).
 - **The classifier, not the threshold, is the defense for other-framework questions.** Translation adds "in FastAPI" to many queries, which pulls them closer to the corpus; g25 (pure Starlette, in Spanish) is already below 0.52 and would be answered if the classifier let it through.
 - **The threshold stays at 0.52** (D41). Tuning it on the holdout would contaminate it; recalibration is planned for Week 5 with a new, unseen holdout.
-- **The rate limiter is per instance and in memory**: it resets on deploy and, with several workers, the effective limit is limit x workers (D37).
+- **The rate limiter is per instance and in memory**: it resets on deploy and, with several workers, the effective limit is limit x workers (D37). Its key is the client's public IP, taken two hops from the right of `X-Forwarded-For` (Cloudflare's edge and Render's internal hop); verified on Render on 2026-11-25: two networks got separate quotas and a spoofed left-hand entry did not change the key (D37).
 - **Faithfulness is judged by the same model that answers**, and it does not check code the model rewrote (see above).
 
 ## Tests
