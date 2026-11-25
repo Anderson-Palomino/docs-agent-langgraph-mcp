@@ -10,6 +10,7 @@ from docs_agent.evaluation.compare import (
     classifier_flips,
     es_out_of_corpus_rows,
     render_comparison,
+    route_changes,
 )
 
 A = "https://fastapi.tiangolo.com/tutorial/body/"
@@ -74,6 +75,56 @@ def test_classifier_flips_solo_los_que_cambian():
     assert classifier_flips(before, after) == [
         {"id": "g03", "expected_route": "answer", "before_cut": True, "after_cut": False}
     ]
+
+
+# --- route_changes ---
+
+
+def _swap_runs():
+    """El conteo de falsos «respondí» queda igual (1 y 1), pero cambia qué caso es."""
+    before = [
+        row("g24", lang="en", expected_route="no_se", category="out_near", expected_urls=[]),  # falso respondí
+        cut("g21", lang="en", expected_route="no_se", category="out_near", expected_urls=[]),
+        row("g01"),
+    ]
+    after = [
+        cut("g24", lang="en", expected_route="no_se", category="out_near", expected_urls=[]),
+        # en inglés, ahora pasa el clasificador y el umbral: nuevo falso respondí
+        row("g21", lang="en", expected_route="no_se", category="out_near", expected_urls=[]),
+        row("g01"),
+    ]
+    return before, after
+
+
+def test_route_changes_conteo_igual_pero_ids_intercambiados():
+    before, after = _swap_runs()
+    changes = {c["id"]: c for c in route_changes(before, after)}
+    assert set(changes) == {"g21", "g24"}
+    assert changes["g21"]["status_before"] is None
+    assert changes["g21"]["status_after"] == "false_answer"
+    assert changes["g21"]["cut_by_before"] == "classifier" and changes["g21"]["cut_by_after"] is None
+    assert changes["g24"]["status_before"] == "false_answer" and changes["g24"]["status_after"] is None
+    assert changes["g21"]["lang"] == "en"
+
+
+def test_route_changes_either_respondido_sin_fuente_cuenta_como_falso_respondi():
+    before = [row("g30", expected_route="either", category="trap_missing_fact")]
+    after = [row("g30", expected_route="either", category="trap_missing_fact",
+                 citations=["https://otra.example/"])]
+    (c,) = route_changes(before, after)
+    assert c["route_before"] == c["route_after"] == "answer"
+    assert c["status_after"] == "false_answer"
+
+
+def test_render_comparison_tabla_cambios_de_ruta_marca_nuevo_falso_respondi():
+    before, after = _swap_runs()
+    md = render_comparison(run(before), run(after, day="2026-11-24"), None)
+    section = md.split("### Cambios de ruta", 1)[1].split("\n## ", 1)[0]
+    g21 = next(line for line in section.splitlines() if line.startswith("| g21 |"))
+    g24 = next(line for line in section.splitlines() if line.startswith("| g24 |"))
+    assert "nuevo falso «respondí»" in g21
+    assert "corrige falso «respondí»" in g24
+    assert "| g01 |" not in section
 
 
 # --- es_out_of_corpus_rows ---

@@ -5,7 +5,7 @@ Las métricas agregadas salen de `metrics.compute_metrics` (se recalculan desde 
 anteriores a la Tarea 3 no traen `language`/`search_query`/`translated`: se muestran como "—".
 """
 
-from docs_agent.evaluation.metrics import _rate, compute_metrics
+from docs_agent.evaluation.metrics import _cites_expected, _rate, compute_metrics
 from docs_agent.evaluation.report import NO_VALUE, _ms, _pct, _score, _usd
 
 DETAIL_IDS = ["g03", "g06", "g07", "g09"]  # las 4 preguntas en español que el 11-17 respondieron "no sé"
@@ -66,6 +66,62 @@ def _cut_by(case: dict | None) -> str | None:
     if case.get("route") == "no_se":
         return "threshold"
     return None
+
+
+def _route_status(case: dict | None) -> str | None:
+    """`false_answer`, `false_no_se` o `None` (acierto, error o caso faltante), igual que `compute_metrics`."""
+    if case is None or case.get("error"):
+        return None
+    exp, got = case["expected_route"], case.get("route")
+    if exp == "either":
+        return "false_answer" if got == "answer" and not _cites_expected(case) else None
+    if exp == "answer" and got != "answer":
+        return "false_no_se"
+    if exp == "no_se" and got == "answer":
+        return "false_answer"
+    return None
+
+
+def route_changes(before: list[dict], after: list[dict]) -> list[dict]:
+    """Casos cuya ruta, quién cortó o condición de falso «no sé»/«respondí» cambió entre corridas.
+
+    Deja ver caso por caso el criterio (2) de la spec 5.2bis: un falso «respondí» nuevo no se esconde
+    detrás de otro corregido aunque el conteo total quede igual.
+    """
+    b_by, a_by = {c["id"]: c for c in before}, {c["id"]: c for c in after}
+    out = []
+    for cid in _ordered_ids(before, after, lambda c: True):
+        b, a = b_by.get(cid), a_by.get(cid)
+        item = {
+            "id": cid,
+            "lang": _field(a, "lang") or _field(b, "lang"),
+            "expected_route": _field(a, "expected_route") or _field(b, "expected_route"),
+            "route_before": _field(b, "route"),
+            "route_after": _field(a, "route"),
+            "cut_by_before": _cut_by(b),
+            "cut_by_after": _cut_by(a),
+            "status_before": _route_status(b),
+            "status_after": _route_status(a),
+        }
+        if any(item[f"{k}_before"] != item[f"{k}_after"] for k in ("route", "cut_by", "status")):
+            out.append(item)
+    return out
+
+
+_STATUS_LABEL = {"false_answer": "falso «respondí»", "false_no_se": "falso «no sé»"}
+
+
+def _change_mark(item: dict) -> str:
+    """`nuevo falso «respondí»`, `corrige falso «no sé»`… o "—" si no cambió la condición."""
+    sb, sa = item["status_before"], item["status_after"]
+    if sb == sa:
+        return NO_VALUE
+    marks = []
+    if sa:
+        marks.append(f"**nuevo {_STATUS_LABEL[sa]}**")
+    if sb:
+        marks.append(f"corrige {_STATUS_LABEL[sb]}")
+    return " · ".join(marks)
 
 
 def _ordered_ids(before: list[dict], after: list[dict], keep) -> list[str]:
@@ -217,6 +273,29 @@ def render_comparison(before_run: dict, after_run: dict, holdout_run: dict | Non
         ]
     else:
         lines.append("Ningún caso cambió de decisión en el clasificador.")
+
+    lines += [
+        "",
+        "### Cambios de ruta",
+        "",
+        "Todos los casos cuya ruta, quién cortó o condición de falso «no sé»/«respondí» cambió (cualquier "
+        "idioma): un falso «respondí» nuevo aparece aunque el conteo total no cambie.",
+        "",
+    ]
+    changes = route_changes(before, after)
+    if changes:
+        lines += [
+            "| Caso | Idioma | Ruta esperada | Ruta antes | Ruta después | Cortó antes | Cortó después | Cambio |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {c['id']} | {_cell(c['lang'])} | {_cell(c['expected_route'])} | {_cell(c['route_before'])} "
+            f"| {_cell(c['route_after'])} | {_cut_cell(c['cut_by_before'])} | {_cut_cell(c['cut_by_after'])} "
+            f"| {_change_mark(c)} |"
+            for c in changes
+        ]
+    else:
+        lines.append("Ningún caso cambió de ruta, de quién cortó ni de condición.")
 
     expected = _expected_routes(after, before)
     lines += [
