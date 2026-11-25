@@ -227,3 +227,14 @@ def test_holdout_file_is_valid():
     assert any(c.category == "out_near" for c in cases)
     assert not any(c.judge_review for c in cases)
     assert not {c.question for c in cases} & {c.question for c in golden}
+
+
+def test_render_review_header_names_source_and_holdout(review, tmp_path):
+    cases = load_golden(_write(tmp_path, _valid_set()))[:1]
+    normal = review.render_review(cases, {URL}, [])
+    assert "# Golden set: tabla de revisión" in normal
+    assert "desde `eval/golden_set.json`" in normal and "Distribución: completa." in normal
+    hold = review.render_review(cases, {URL}, [], ROOT / "eval" / "holdout_es.json", holdout=True)
+    assert "# Holdout en español: tabla de revisión" in hold
+    assert "desde `eval/holdout_es.json`" in hold
+    assert "Distribución: no aplica (holdout)." in hold and "completa" not in hold

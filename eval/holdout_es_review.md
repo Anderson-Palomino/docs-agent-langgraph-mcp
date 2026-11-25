@@ -1,9 +1,9 @@
-# Golden set: tabla de revisión
+# Holdout en español: tabla de revisión
 
-Generado por `scripts/golden_review.py` desde `eval/golden_set.json`; no editar a mano.
+Generado por `scripts/golden_review.py` desde `eval/holdout_es.json`; no editar a mano.
 Escribe tus comentarios en la última columna (o aparte, citando el id).
 
-Casos: 6. Distribución: completa.
+Casos: 6. Distribución: no aplica (holdout).
 
 | id | categoría | lang | pregunta | ruta esperada | URLs esperadas | ¿existe? | notas | comentario del dueño |
 |---|---|---|---|---|---|---|---|---|
