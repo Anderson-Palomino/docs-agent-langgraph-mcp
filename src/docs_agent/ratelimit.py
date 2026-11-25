@@ -10,8 +10,11 @@ Como la doc no garantiza el primer valor, se usa el valor más a la derecha que 
 que añadió el proxy de confianza, no el cliente.
 """
 
+import hashlib
+import hmac
 import ipaddress
 import logging
+import secrets
 import threading
 import time
 from collections import OrderedDict, deque
@@ -113,6 +116,16 @@ def resolve_client(peer: str | None, forwarded_for: str | None, trusted: Trusted
 def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> str:
     """Solo la IP de `resolve_client`."""
     return resolve_client(peer, forwarded_for, trusted).ip
+
+
+_KEY_ID_SALT = secrets.token_bytes(16)  # una por proceso; nunca se loguea ni se persiste
+
+
+def key_id(key: str) -> str:
+    """Identificador no reversible de la clave del limitador, para los logs: 8 hex de HMAC-SHA256 con una sal
+    aleatoria por proceso. Dos líneas con el mismo `key_id` (misma instancia en marcha) usaron la misma clave;
+    la sal cambia en cada arranque, así que no se comparan entre deploys."""
+    return hmac.new(_KEY_ID_SALT, key.encode(), hashlib.sha256).hexdigest()[:8]
 
 
 def mask_ip(value: str) -> str:

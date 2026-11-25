@@ -223,7 +223,7 @@ Exit codes: `0` all good, `1` a check or pytest failed (or server/model error), 
 | Cases | 6 (6 without error) |
 | Route accuracy | 66.7% (4/6) |
 | Route matrix | answer ok 2, no_se ok 2, false "no sé" 2, false "answered" 0 |
-| Classifier route (out-of-domain cut correctly) | 100.0% (6/6) |
+| Classifier decision correct | 100.0% (6/6; 2 cut, 4 passed) |
 | Source hit (at least one expected URL cited) | 100.0% (2/2) |
 | Valid citations (grounded) | 100.0% (2/2) |
 | Faithfulness (judge mean) | 1.00 (2 judged / 2 answered) |
@@ -268,7 +268,7 @@ What the metrics mean, and what they do not measure:
 
 - **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer.
 - **Source hit / grounded**: the cited URLs (normalized) match `expected_urls`, and the citations come from what was retrieved. A right URL does not mean the text says what the answer claims.
-- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. **The manual review of the judge is still pending** (the owner has not filled `eval/results/2026-11-25-judge-review.md` yet), so there is no agreement figure: 1.00 means the judge found no unsupported claims, not verified faithfulness.
+- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. **The manual review of the judge is still pending** (the owner has not filled `eval/results/2026-11-25-judge-review.md` yet), so there is no agreement figure: a high score means the judge found few unsupported claims (golden set after: 1 of 20 answers, mean 0.99), not verified faithfulness.
 - Every figure comes from a single run.
 
 ## Limitations
@@ -342,7 +342,7 @@ Real outputs from `POST /ask` (corpus: FastAPI 0.162.0; answers trimmed to the f
   - [Dependencies with yield > A database dependency with `yield`](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#a-database-dependency-with-yield)
   - [Advanced Dependencies > Dependencies with `yield` and `scope`](https://fastapi.tiangolo.com/advanced/advanced-dependencies/#dependencies-with-yield-and-scope)
 
-Known weakness: answers are sometimes generic (question 2 explains the idea of lifespan events without showing the code), because the model is told to use only the retrieved fragments. Retrieval quality will be measured with evaluations in a later week.
+Known weakness: answers are sometimes generic (question 2 explains the idea of lifespan events without showing the code), because the model is told to use only the retrieved fragments. Retrieval quality is measured in the Evaluation section.
 
 ## Design decisions
 

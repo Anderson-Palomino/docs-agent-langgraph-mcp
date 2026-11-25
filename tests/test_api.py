@@ -392,6 +392,43 @@ def test_ask_rate_limit_429_logs_masked_key(make_client, caplog):
     assert "181.65.10.20" not in msg and "9.9.9.9" not in msg
 
 
+def test_ask_rate_limit_429_log_caps_xff_entries(make_client, caplog):
+    import logging
+
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*")
+    c = _peer_client("10.0.0.1")
+    h = {"X-Forwarded-For": ", ".join(f"9.{i}.9.9" for i in range(1, 9)) + ", 181.65.10.20"}  # 9 entradas
+    with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
+        c.post("/ask", json={"question": "x"}, headers=h)
+        r2 = c.post("/ask", json={"question": "x"}, headers=h)
+    assert r2.status_code == 429
+    recs = [x for x in caplog.records if x.name == "docs_agent.api" and "rate limit 429" in x.getMessage()]
+    msg = recs[0].getMessage()
+    assert "entries=9" in msg
+    xff = msg.split("xff=[", 1)[1].rstrip("]")
+    assert xff.startswith("…, ")
+    assert len(xff[len("…, "):].split(", ")) == 5
+    assert xff.endswith("181.65.x.x") and "9.1.x.x" not in msg
+
+
+def test_ask_rate_limit_429_log_has_key_id_not_ip(make_client, caplog):
+    import logging
+
+    from docs_agent.ratelimit import key_id
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*")
+    c = _peer_client("10.0.0.1")
+    h = {"X-Forwarded-For": "181.65.10.20"}
+    with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
+        c.post("/ask", json={"question": "x"}, headers=h)
+        c.post("/ask", json={"question": "x"}, headers=h)
+    msg = [x for x in caplog.records if "rate limit 429" in x.getMessage()][0].getMessage()
+    assert f"key_id={key_id('181.65.10.20')}" in msg
+
+
 def test_health_never_rate_limited(make_client):
     from tests.fakes import FakeOpenAI
 

@@ -206,3 +206,14 @@ def test_resolve_client_garbage_entry_matches_client_ip():
 )
 def test_mask_ip(value, expected):
     assert mask_ip(value) == expected
+
+
+def test_key_id_stable_distinct_and_not_the_ip():
+    from docs_agent.ratelimit import key_id
+
+    a, b = key_id("181.65.10.20"), key_id("181.65.77.88")  # mismo /16, claves distintas
+    assert a == key_id("181.65.10.20")
+    assert a != b
+    assert len(a) == 8 and all(ch in "0123456789abcdef" for ch in a)
+    for ip in ("181.65.10.20", "2001:db8:1:2::/64"):
+        assert ip != key_id(ip) and ip not in key_id(ip)

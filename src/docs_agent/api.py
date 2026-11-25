@@ -22,7 +22,7 @@ from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
-from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, limit_key, mask_ip, parse_trusted, resolve_client
+from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, key_id, limit_key, mask_ip, parse_trusted, resolve_client
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
 logger = logging.getLogger(__name__)
@@ -105,13 +105,17 @@ def enforce_rate_limit(request: Request) -> None:
     retry_after = limiter.hit(key)
     if retry_after is not None:
         # Diagnóstico de D37: qué clave se usó y de dónde salió, siempre enmascarada (nunca una IP completa).
+        # `key_id` permite comparar claves sin la ambigüedad del /16; solo se enmascaran las últimas 5 entradas.
+        entries = resolved.xff_entries
+        shown = ", ".join(mask_ip(e) for e in entries[-5:])
         logger.warning(
-            "rate limit 429: key=%s source=%s index_from_right=%s entries=%d xff=[%s]",
+            "rate limit 429: key=%s key_id=%s source=%s index_from_right=%s entries=%d xff=[%s]",
             mask_ip(key),
+            key_id(key),
             resolved.source,
             resolved.xff_index_from_right,
-            len(resolved.xff_entries),
-            ", ".join(mask_ip(e) for e in resolved.xff_entries),
+            len(entries),
+            ("…, " if len(entries) > 5 else "") + shown,
         )
         raise HTTPException(
             status_code=429,
