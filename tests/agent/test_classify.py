@@ -52,9 +52,13 @@ def test_prompt_asks_for_english_search_query_only_for_spanish():
     assert "translated into English" in CLASSIFIER_PROMPT
     assert 'only if `language` is "es"' in CLASSIFIER_PROMPT
     assert 'null if `language` is "en"' in CLASSIFIER_PROMPT
-    assert "do not answer" in CLASSIFIER_PROMPT and "do not expand" in CLASSIFIER_PROMPT
-    for identifier in ("`Depends`", "`status_code`", "`Query`"):
+    assert "do not answer" in CLASSIFIER_PROMPT
+    assert "Do not add concepts the question does not ask about" in CLASSIFIER_PROMPT
+    # Ajuste 1 (D40): términos de la doc; los ejemplos no salen del golden set ni del holdout.
+    for identifier in ("`UploadFile`", "`response_model`"):
         assert identifier in CLASSIFIER_PROMPT
+    for leaked in ("`status_code`", "`Form`", "`Query`"):
+        assert leaked not in CLASSIFIER_PROMPT
 
 
 def _c(language: str, search_query):

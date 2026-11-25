@@ -23,9 +23,12 @@ CLASSIFIER_PROMPT = (
     "`is_fastapi` is false.\n"
     "- `language` is the language of the question: \"es\" for Spanish, \"en\" for English; "
     "any other language -> \"en\".\n"
-    "- `search_query`: only if `language` is \"es\", the question translated into English, faithfully: "
-    "do not answer it and do not expand it; keep code identifiers as they are (`Depends`, `status_code`, "
-    "`Query`, ...). It is null if `language` is \"en\".\n"
+    "- `search_query`: only if `language` is \"es\", the question translated into English as a search query "
+    "for the FastAPI documentation. Keep its meaning and do not answer it. Keep code identifiers as they "
+    "are, and when the question clearly refers to a FastAPI concept without naming it, use the term the "
+    "FastAPI docs use for it (for example \"subir un archivo\" -> `UploadFile`, \"filtrar los campos de la "
+    "respuesta\" -> `response_model`). Do not add concepts the question does not ask about. "
+    "It is null if `language` is \"en\".\n"
     "- `reason`: one short sentence explaining the decision."
 )
 
