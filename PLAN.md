@@ -65,5 +65,9 @@ Hecho cuando: el README tiene la tabla de resultados y un link de demo en vivo.
 - [x] S3: golden set de 30 preguntas y tabla de resultados
 - [x] S3: demo desplegada
 - [ ] S3: trazas en la demo (código listo, D34; LangSmith no configurado en Render)
-- [ ] S4: revisión manual de los 6 casos del juez (coincidencia en D38)
-- [ ] S4: README en inglés y video de 2 minutos
+- [x] S4: preguntas en español con traducción en el clasificador, medidas con un holdout (D40, D41)
+- [x] S4: README final en inglés con tabla de evaluación (holdout aparte del golden set) y limitaciones
+- [x] S4: guion del video de 2 minutos (`docs/demo-script.md`)
+- [ ] S4: revisión manual de los casos del juez (hoja `eval/results/2026-11-25-judge-review.md` sin llenar; coincidencia en D38)
+- [ ] S4: grabar el video de 2 minutos
+- [ ] S5 (pendiente): recalibrar el umbral con un holdout nuevo y estudiar el fallo de recuperación de h04 (D41)

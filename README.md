@@ -1,12 +1,39 @@
 # docs-agent
 
-A RAG agent that answers questions about the FastAPI documentation and **cites the exact doc section** it used. This is **Week 2 of 4** of a portfolio project: Week 1 built the RAG API (FastAPI + pgvector); Week 2 turns `/ask` into a LangGraph agent that reads the corpus through its own MCP server, which Claude can also use (below). Evaluations come later.
+A RAG agent that answers questions about the FastAPI documentation, in **Spanish or English**, and **cites the exact doc section** it used (or says "no sé" when the docs don't cover it). It is a LangGraph agent served by FastAPI that reads a Postgres/pgvector corpus through **its own MCP server**, which Claude can also use. Built as a 4-week portfolio project; every design decision is recorded in [docs/decisiones.md](docs/decisiones.md) (in Spanish).
+
+## Try it live
+
+Live demo: https://docs-agent-cqpr.onrender.com/docs (interactive API docs; `/` redirects there). It runs on Render's Free plan, so **the first request after ~15 minutes idle takes about a minute** (cold start). `/ask` is limited to 20 requests per hour per IP and to a daily token budget (D37); beyond either, HTTP 429.
+
+Open `POST /ask` > "Try it out" and send one of these:
+
+```json
+{"question": "How do I declare a request body with Pydantic?"}
+{"question": "¿Cómo agrego CORS a mi aplicación FastAPI?"}
+{"question": "How do I protect a Django REST Framework view with permissions?"}
+```
+
+The first two return an answer with citations (the Spanish one is answered in Spanish); the third is out of the corpus and returns "no sé" (`route: "no_se"`).
+
+## System overview
+
+```mermaid
+flowchart LR
+    U[Client: curl / Swagger / n8n] --> API[FastAPI<br/>POST /ask]
+    API --> G[LangGraph graph<br/>classify, search, evaluate, answer or no sé]
+    G <-->|stdio MCP client| M[MCP server<br/>search_docs, get_section, list_sources]
+    M --> PG[(Postgres + pgvector<br/>FastAPI docs chunks)]
+    G --> O[OpenAI<br/>gpt-4.1-mini, text-embedding-3-small]
+    M --> O
+    C[Claude Code / Desktop] -->|stdio MCP| M
+```
 
 ## Architecture
 
 1. **Ingest** downloads the `docs/en/docs/**/*.md` of `fastapi/fastapi` at a pinned tag and splits it by `##`/`###` sections (max 800 tokens, 100 overlap), each with its own `#anchor` URL.
 2. Chunks are embedded with `text-embedding-3-small` (1536 dims) and stored in Postgres + pgvector.
-3. `POST /ask` runs a LangGraph graph: a classifier (`gpt-4.1-mini`) sends out-of-domain questions straight to a fixed "no sé"; otherwise the graph calls the MCP server (`search_docs`, one persistent stdio session), which embeds the question and returns the top 5 chunks by cosine similarity. If the best distance is above the threshold (D21), the answer is "no sé" too.
+3. `POST /ask` runs a LangGraph graph: a classifier (`gpt-4.1-mini`) sends out-of-domain questions straight to a fixed "no sé" and, for Spanish questions, also translates the question into an English search query (D40; the answer is still written in the user's language); otherwise the graph calls the MCP server (`search_docs`, one persistent stdio session), which embeds the question and returns the top 5 chunks by cosine similarity. If the best distance is above the threshold (D21), the answer is "no sé" too.
 4. Otherwise the graph reads the best hit's full section with `get_section`, and `gpt-4.1-mini` answers using only that section and the full top-k chunks, returning structured `{answer, citations}`.
 5. Cited URLs are validated against the retrieved chunks; invented ones are dropped (`grounded: false` if none survive). Daily token budgets cap the cost.
 
@@ -185,42 +212,74 @@ Exit codes: `0` all good, `1` a check or pytest failed (or server/model error), 
 
 ## Evaluation
 
-Live demo: https://docs-agent-cqpr.onrender.com/docs (interactive API docs; `/` redirects there). It runs on Render's Free plan, so the first request after ~15 minutes idle takes about a minute (cold start). `/ask` is limited to 20 requests per hour per IP and to a daily token budget (D37); beyond either, HTTP 429.
+`scripts/evaluate.py` runs a golden set through the same path as `/ask` (real MCP server over stdio) and scores it. All runs: `gpt-4.1-mini`, judge `gpt-4.1-mini`, threshold 0.52, k=5, FastAPI docs 0.162.0, one run each.
 
-`scripts/evaluate.py` runs the 30-case golden set (`eval/golden_set.json`) through the same path as `/ask` (real MCP server over stdio) and scores it. Results below are from `eval/results/2026-11-17.md` (`gpt-4.1-mini`, judge `gpt-4.1-mini`, threshold 0.52, k=5, FastAPI docs 0.162.0):
+### Holdout: the clean measurement (Spanish)
+
+6 Spanish questions written before the translation prompt was frozen and never used to tune anything (`eval/holdout_es.json`; source: `eval/results/2026-11-25-holdout.md`). 4 are in the corpus and 2 are out of it (a Flask question and a cooking question).
 
 | Metric | Value |
 |---|---|
-| Cases | 30 (30 without error) |
-| Route accuracy | 80.0% (24/30) |
-| Route matrix | answer ok 15, no_se ok 9, false "no sé" 4, false "answered" 2 |
-| Source hit (at least one expected URL cited) | 87.5% (14/16) |
-| Source hit, multi-source cases (all expected URLs cited) | 66.7% (2/3) |
-| Valid citations (grounded) | 88.2% (15/17) |
-| Faithfulness (judge mean) | 1.00 (17 judged / 17 answered) |
-| Answers with some unsupported claim | 0.0% (0/17) |
-| Graph latency p50 / p95 | 3,261 ms / 5,412 ms |
-| Cost per question | US$0.0013 (incl. judge; judge US$0.0177 of the US$0.0388 total) |
-| Run tokens (all cases) | 70,141 |
+| Cases | 6 (6 without error) |
+| Route accuracy | 66.7% (4/6) |
+| Route matrix | answer ok 2, no_se ok 2, false "no sé" 2, false "answered" 0 |
+| Classifier route (out-of-domain cut correctly) | 100.0% (6/6) |
+| Source hit (at least one expected URL cited) | 100.0% (2/2) |
+| Valid citations (grounded) | 100.0% (2/2) |
+| Faithfulness (judge mean) | 1.00 (2 judged / 2 answered) |
+| Graph latency p50 / p95 | 1,549 ms / 5,566 ms |
+| Cost per question (incl. judge) | US$0.0011 |
+| Run tokens | 11,688 |
+
+Read it for what it is: 6 cases is far too few for a stable figure. In plain words, 2 of the 4 valid Spanish questions were answered, and nothing out of domain slipped through.
+
+### Golden set: 30 cases (not a clean measurement)
+
+The golden set (`eval/golden_set.json`, 15 of its cases in Spanish) is where the translation prompt was developed: **the prompt was adjusted once while looking at these cases** (D40), so the "after" column is optimistic. Sources: `eval/results/2026-11-17.md` (before translation) and `eval/results/2026-11-25-2.md` (after), side by side in `eval/results/2026-11-25-comparison.md`.
+
+| Metric | Before (2026-11-17) | After (2026-11-25-2) |
+|---|---|---|
+| Cases | 30 (30 without error) | 30 (30 without error) |
+| Route accuracy | 80.0% (24/30) | 90.0% (27/30) |
+| Route matrix | answer ok 15, no_se ok 9, false "no sé" 4, false "answered" 2 | answer ok 18, no_se ok 9, false "no sé" 1, false "answered" 2 |
+| Source hit (at least one expected URL cited) | 87.5% (14/16) | 84.2% (16/19) |
+| Source hit, multi-source cases (all expected URLs cited) | 66.7% (2/3) | 66.7% (2/3) |
+| Valid citations (grounded) | 88.2% (15/17) | 90.0% (18/20) |
+| Faithfulness (judge mean) | 1.00 (17 judged) | 0.99 (20 judged) |
+| Answers with some unsupported claim | 0.0% (0/17) | 5.0% (1/20) |
+| Graph latency p50 / p95 | 3,261 ms / 5,412 ms | 3,418 ms / 5,948 ms |
+| Cost per question (incl. judge) | US$0.0013 | US$0.0016 |
+| Run tokens | 70,141 | 86,479 |
+
+The 3 false "no sé" that were fixed (g03, g06, g07) are Spanish questions whose translated query landed closer to the right page (for example g06: distance 0.617 to 0.374).
 
 ```bash
 uv run python scripts/evaluate.py                          # 30 cases, with judge
 uv run python scripts/evaluate.py --only g01,g05 --no-judge
+uv run python scripts/evaluate.py --golden eval/holdout_es.json
 uv run python scripts/evaluate.py --golden path.json --max-tokens 200000
 ```
 
-- It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`; run it only against the local `docs` database. A full run is ~70k tokens, about US$0.04.
+- It needs the compose db with the ingested corpus and a valid `OPENAI_API_KEY`; run it only against the local `docs` database. A full golden run is ~86k tokens, about US$0.05.
 - Spend goes to its own budget kind, `eval` (`EVAL_DAILY_TOKEN_BUDGET`, D39), so it never eats the live `/ask` budget. `--max-tokens` (default 400,000) caps one run; it is checked before each case, so a run may overshoot it by at most one case.
-- Outputs: `eval/results/<Lima day>.json`, `.md` and `-judge-review.md` (a sheet for manual review of the judge); earlier runs are not overwritten. Exit codes: `0` ok, `1` failure or a case with error, `2` budget.
+- Outputs: `eval/results/<Lima day>.json` and `.md`; earlier runs are not overwritten. The sheet for manually reviewing the judge is built separately by `scripts/judge_review_sheet.py` (`evaluate.py` does not write it). Exit codes: `0` ok, `1` failure or a case with error, `2` budget.
 
 What the metrics mean, and what they do not measure:
 
-- **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer. The real run scores 24/30 (2 false "answered"), while D36 and its threshold table show 25/30 (1 false "answered") at 0.52: that is an offline simulation, which never counts an `either` case (g30) as an error, whereas the real run judged it with its citations (see D36).
+- **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer.
 - **Source hit / grounded**: the cited URLs (normalized) match `expected_urls`, and the citations come from what was retrieved. A right URL does not mean the text says what the answer claims.
-- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. Agreement with a manual review was postponed to Week 4 (owner's review of `eval/results/2026-11-17-judge-review.md`); until then, 1.00 means the judge found no unsupported claims, not verified faithfulness.
-- 30 cases are an orientation, not statistics, and the numbers come from a single run.
+- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. **The manual review of the judge is still pending** (the owner has not filled `eval/results/2026-11-25-judge-review.md` yet), so there is no agreement figure: 1.00 means the judge found no unsupported claims, not verified faithfulness.
+- Every figure comes from a single run.
 
-Threshold (D36): `NO_ANSWER_DISTANCE_THRESHOLD` stays at 0.52. The 4 false "no sé" are basic questions in Spanish, an embedding gap across languages (English corpus), not a threshold problem; the planned fix (translate the question before embedding) is for Week 4. Judge and metric details: D38.
+## Limitations
+
+- **The holdout is tiny** (6 questions), so the Spanish numbers are indicative, not statistics.
+- **Spanish sits farther from the corpus than English**, even after translation (D40): the corpus is English and the embedding model is not tuned for cross-language search. h02 (static files) landed at distance 0.523, just above the 0.52 threshold and was answered "no sé" by a hair.
+- **h04 is a retrieval miss, not a threshold problem**: the right page (`header-params`) is not among the top two results, so no reasonable threshold fixes it (D41).
+- **The classifier, not the threshold, is the defense for other-framework questions.** Translation adds "in FastAPI" to many queries, which pulls them closer to the corpus; g25 (pure Starlette, in Spanish) is already below 0.52 and would be answered if the classifier let it through.
+- **The threshold stays at 0.52** (D41). Tuning it on the holdout would contaminate it; recalibration is planned for Week 5 with a new, unseen holdout.
+- **The rate limiter is per instance and in memory**: it resets on deploy and, with several workers, the effective limit is limit x workers (D37).
+- **Faithfulness is judged by the same model that answers**, and its manual review is pending (see above).
 
 ## Tests
 
@@ -229,7 +288,7 @@ docker compose up -d db
 uv run pytest -q
 ```
 
-305 tests. No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
+No test calls OpenAI. Integration tests need the compose db and are skipped if it is unreachable. They run against a separate `docs_test` database (created automatically on first run from `db/init.sql`; override by exporting `TEST_DATABASE_URL` in the shell; it is not read from `.env`), so the demo database `docs` is never touched.
 
 ## Example questions
 
