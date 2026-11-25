@@ -86,6 +86,17 @@ Abre `<URL>/docs` (la página interactiva de FastAPI) y prueba `POST /ask` con u
 
 Para comprobar el límite por IP, repite `/ask` más de `ASK_RATE_LIMIT_PER_HOUR` veces (cada pregunta cuesta una fracción de centavo; mejor bajar `ASK_RATE_LIMIT_PER_HOUR` a 3 para la prueba y devolverlo después): la siguiente debe dar 429 con `Retry-After`; `/health` nunca se limita.
 
+### Verificación externa tras el despliegue de la Semana 4 (2026-11-25)
+
+Merge del PR #6 a `main` a las 07:12 UTC (`ca23d0d`). Peticiones a `https://docs-agent-cqpr.onrender.com`, con el cuerpo en un archivo UTF-8 y `--data-binary`:
+
+| Prueba | Resultado |
+|---|---|
+| `GET /health` (07:12, arranque en frío, 34 s) | 200 `{"status":"ok","chunks":1128}` |
+| Español, g03: "¿Cómo hago que un endpoint de creación devuelva el código de estado 201 en lugar de 200?" (07:18) | 200, `route=answer`, `grounded=true`, 4 citas, la primera `tutorial/response-status-code/`. Antes de la traducción esta pregunta daba "no sé", así que confirma que corre la versión nueva. |
+| Inglés: "How do I read a cookie value sent by the client in a path operation?" | 200, `route=answer`, `grounded=true`, cita `tutorial/cookie-params/#declare-cookie-parameters` |
+| Fuera del corpus, español: "¿Cómo configuro permisos en Django REST Framework?" | 200, `route=no_se`, `reason=out_of_domain`, sin citas y sin tokens de respuesta (solo el clasificador) |
+
 ### Verificar la clave del límite por IP
 
 Esto es para el dueño: se hace a mano contra tu servicio de Render. Sirve para ver qué clave usa el límite detrás del proxy de Render (D37). Render no documenta qué hace con `X-Forwarded-For`, así que la respuesta sale de los logs, no de una suposición.
