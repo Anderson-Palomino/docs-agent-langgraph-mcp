@@ -22,7 +22,17 @@ from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
-from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, key_id, limit_key, mask_ip, parse_trusted, resolve_client
+from docs_agent.ratelimit import (
+    UNTRUSTED_CHAIN,
+    SlidingWindowLimiter,
+    TrustedProxies,
+    cf_ip_match,
+    key_id,
+    limit_key,
+    mask_ip,
+    parse_trusted,
+    resolve_client,
+)
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
 logger = logging.getLogger(__name__)
@@ -58,7 +68,7 @@ RATE_WINDOW_S = 3600.0
 def rate_limit_state(app: FastAPI, settings: Any) -> tuple[SlidingWindowLimiter, TrustedProxies]:
     """Limitador y proxies confiables en `app.state`; se crean en el lifespan, o perezosamente si no corrió
     (TestClient sin `with`), y se rehacen si cambia la configuración."""
-    key = (settings.ask_rate_limit_per_hour, settings.trusted_proxy_ips)
+    key = (settings.ask_rate_limit_per_hour, settings.trusted_proxy_ips, settings.trusted_proxy_hops)
     current = getattr(app.state, "rate_limit", None)
     if current is None or current[0] != key:
         trusted = parse_trusted(settings.trusted_proxy_ips)
@@ -98,23 +108,26 @@ def get_docs_tools(request: Request) -> Any:
 def enforce_rate_limit(request: Request) -> None:
     """Primer chequeo de `/ask`: dependencia declarada antes que `get_conn`/`get_openai`, así un cliente que
     excede el límite recibe 429 sin abrir conexión a Postgres ni depender de que la base esté arriba."""
-    limiter, trusted = rate_limit_state(request.app, get_settings())
+    settings = get_settings()
+    limiter, trusted = rate_limit_state(request.app, settings)
     peer = request.client.host if request.client else None
-    resolved = resolve_client(peer, ",".join(request.headers.getlist("x-forwarded-for")), trusted)
+    resolved = resolve_client(peer, ",".join(request.headers.getlist("x-forwarded-for")), trusted, settings.trusted_proxy_hops)
     key = limit_key(resolved.ip)
     retry_after = limiter.hit(key)
     if retry_after is not None:
         # Diagnóstico de D37: qué clave se usó y de dónde salió, siempre enmascarada (nunca una IP completa).
         # `key_id` permite comparar claves sin la ambigüedad del /16; solo se enmascaran las últimas 5 entradas.
         entries = resolved.xff_entries
+        cf_match = cf_ip_match(request.headers.get("cf-connecting-ip"), key)
         shown = ", ".join(mask_ip(e) for e in entries[-5:])
         logger.warning(
-            "rate limit 429: key=%s key_id=%s source=%s index_from_right=%s entries=%d xff=[%s]",
-            mask_ip(key),
+            "rate limit 429: key=%s key_id=%s source=%s index_from_right=%s entries=%d cf_ip_match=%s xff=[%s]",
+            key if key == UNTRUSTED_CHAIN else mask_ip(key),
             key_id(key),
             resolved.source,
             resolved.xff_index_from_right,
             len(entries),
+            cf_match,
             ("…, " if len(entries) > 5 else "") + shown,
         )
         raise HTTPException(

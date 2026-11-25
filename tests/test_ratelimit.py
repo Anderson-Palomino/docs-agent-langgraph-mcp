@@ -217,3 +217,108 @@ def test_key_id_stable_distinct_and_not_the_ip():
     assert len(a) == 8 and all(ch in "0123456789abcdef" for ch in a)
     for ip in ("181.65.10.20", "2001:db8:1:2::/64"):
         assert ip != key_id(ip) and ip not in key_id(ip)
+
+
+# --- Task 13: N saltos desde la derecha (D37) ---
+
+REAL_CHAIN = "38.19.1.2, 172.68.3.4, 10.29.5.6"  # cliente, borde de Cloudflare, salto interno de Render
+
+
+@pytest.fixture(autouse=True)
+def _reset_chain_warning(monkeypatch):
+    from docs_agent import ratelimit
+
+    clock = FakeClock()
+    monkeypatch.setattr(ratelimit, "_warn_clock", clock)
+    monkeypatch.setattr(ratelimit, "_last_warn", None)
+    return clock
+
+
+def test_hops_real_chain_takes_client_entry():
+    r = resolve_client("10.29.5.6", REAL_CHAIN, parse_trusted("*"), hops=2)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("38.19.1.2", "xff", 2)
+
+
+def test_hops_spoofed_left_entry_is_ignored():
+    r = resolve_client("10.29.5.6", "203.0.113.7, " + REAL_CHAIN, parse_trusted("*"), hops=2)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("38.19.1.2", "xff", 2)
+    assert len(r.xff_entries) == 4
+
+
+def test_hops_two_clients_same_edge_get_different_keys():
+    from docs_agent.ratelimit import key_id
+
+    t = parse_trusted("*")
+    a = resolve_client("10.29.5.6", REAL_CHAIN, t, hops=2)
+    b = resolve_client("10.29.5.6", "179.7.8.9, 172.68.3.4, 10.29.5.6", t, hops=2)
+    assert limit_key(a.ip) != limit_key(b.ip)
+    assert key_id(limit_key(a.ip)) != key_id(limit_key(b.ip))
+
+
+@pytest.mark.parametrize("header", ["172.68.3.4, 10.29.5.6", "10.29.5.6", "", None])
+def test_hops_short_chain_uses_shared_key_and_warns(header, caplog):
+    with caplog.at_level(logging.WARNING, logger="docs_agent.ratelimit"):
+        r = resolve_client("10.29.5.6", header, parse_trusted("*"), hops=2)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("untrusted-chain", "xff-short", None)
+    assert limit_key(r.ip) == "untrusted-chain"
+    msgs = [x.getMessage() for x in caplog.records]
+    assert len(msgs) == 1 and "expected >= 3" in msgs[0] and "untrusted-chain" in msgs[0]
+    assert "10.29.5.6" not in msgs[0] and "172.68.3.4" not in msgs[0]
+
+
+def test_hops_warning_is_throttled_to_one_per_minute(caplog, _reset_chain_warning):
+    clock = _reset_chain_warning
+    t = parse_trusted("*")
+    with caplog.at_level(logging.WARNING, logger="docs_agent.ratelimit"):
+        resolve_client("10.29.5.6", "1.2.3.4", t, hops=2)
+        clock.now += 30
+        resolve_client("10.29.5.6", "1.2.3.4", t, hops=2)
+        assert len(caplog.records) == 1
+        clock.now += 31
+        resolve_client("10.29.5.6", "1.2.3.4", t, hops=2)
+    assert len(caplog.records) == 2
+
+
+def test_hops_invalid_entry_uses_shared_key_and_warns(caplog):
+    with caplog.at_level(logging.WARNING, logger="docs_agent.ratelimit"):
+        r = resolve_client("10.29.5.6", "basura, 172.68.3.4, 10.29.5.6", parse_trusted("*"), hops=2)
+    assert (r.ip, r.source) == ("untrusted-chain", "xff-invalid")
+    assert len(caplog.records) == 1
+
+
+def test_hops_untrusted_peer_uses_peer_regardless_of_xff():
+    r = resolve_client("8.8.8.8", REAL_CHAIN, parse_trusted("10.0.0.0/8"), hops=2)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("8.8.8.8", "peer", None)
+
+
+def test_hops_zero_keeps_legacy_behavior():
+    r = resolve_client("10.0.0.1", "9.9.9.9, 5.6.7.8, 10.0.0.2", parse_trusted("10.0.0.0/8"), hops=0)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("5.6.7.8", "xff", 1)
+
+
+def test_hops_trailing_and_empty_entries_do_not_count():
+    t = parse_trusted("*")
+    r = resolve_client("10.29.5.6", REAL_CHAIN + ",", t, hops=2)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("38.19.1.2", "xff", 2)
+    assert len(r.xff_entries) == 3
+    r2 = resolve_client("10.29.5.6", "38.19.1.2,,172.68.3.4, ,10.29.5.6", t, hops=2)
+    assert r2.ip == "38.19.1.2" and len(r2.xff_entries) == 3
+
+
+@pytest.mark.parametrize(
+    "cf, key, expected",
+    [
+        ("38.19.1.2", "38.19.1.2", "yes"),
+        ("::ffff:38.19.1.2", "38.19.1.2", "yes"),
+        ("2001:db8:1:2::9", limit_key("2001:db8:1:2::1"), "yes"),
+        ("8.8.4.4", "38.19.1.2", "no"),
+        ("basura", "38.19.1.2", "no"),
+        (None, "38.19.1.2", "absent"),
+        ("38.19.1.2", "untrusted-chain", "n/a"),
+        (None, "untrusted-chain", "absent"),
+    ],
+)
+def test_cf_ip_match(cf, key, expected):
+    from docs_agent.ratelimit import cf_ip_match
+
+    assert cf_ip_match(cf, key) == expected

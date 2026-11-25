@@ -354,7 +354,7 @@ def test_ask_rate_limit_is_first_check(make_client):
 def test_ask_rate_limit_other_ip_via_trusted_proxy_passes(make_client):
     from tests.fakes import FakeOpenAI
 
-    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8")
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8", trusted_proxy_hops=0)
     c = _peer_client("10.0.0.1")
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 503
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 429
@@ -375,7 +375,7 @@ def test_ask_rate_limit_429_logs_masked_key(make_client, caplog):
 
     from tests.fakes import FakeOpenAI
 
-    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*")
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=0)
     c = _peer_client("10.0.0.1")
     h = {"X-Forwarded-For": "9.9.9.9, 181.65.10.20"}
     with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
@@ -397,7 +397,7 @@ def test_ask_rate_limit_429_log_caps_xff_entries(make_client, caplog):
 
     from tests.fakes import FakeOpenAI
 
-    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*")
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=0)
     c = _peer_client("10.0.0.1")
     h = {"X-Forwarded-For": ", ".join(f"9.{i}.9.9" for i in range(1, 9)) + ", 181.65.10.20"}  # 9 entradas
     with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
@@ -419,7 +419,7 @@ def test_ask_rate_limit_429_log_has_key_id_not_ip(make_client, caplog):
     from docs_agent.ratelimit import key_id
     from tests.fakes import FakeOpenAI
 
-    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*")
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=0)
     c = _peer_client("10.0.0.1")
     h = {"X-Forwarded-For": "181.65.10.20"}
     with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
@@ -496,7 +496,7 @@ def test_ask_rate_limit_precedes_db_dependency(make_client):
 def test_ask_rate_limit_uses_all_xff_header_lines(make_client):
     from tests.fakes import FakeOpenAI
 
-    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8")
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8", trusted_proxy_hops=0)
     c = _peer_client("10.0.0.1")
     # Dos líneas de cabecera: la primera la controla el cliente; cuenta la última (la del proxy).
     h1 = [("X-Forwarded-For", "6.6.6.6"), ("X-Forwarded-For", "1.1.1.1")]
@@ -508,7 +508,7 @@ def test_ask_rate_limit_uses_all_xff_header_lines(make_client):
 def test_ask_rate_limit_ipv6_same_slash_64_shares_quota(make_client):
     from tests.fakes import FakeOpenAI
 
-    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8")
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="10.0.0.0/8", trusted_proxy_hops=0)
     c = _peer_client("10.0.0.1")
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:2::1"}).status_code == 503
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2001:db8:1:2::99"}).status_code == 429
@@ -519,3 +519,68 @@ def test_root_redirects_to_docs(client):
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 307
     assert r.headers["location"] == "/docs"
+
+
+CHAIN_A = "38.19.1.2, 172.68.3.4, 10.29.5.6"
+CHAIN_C = "179.7.8.9, 172.68.3.4, 10.29.5.6"
+
+
+def test_ask_rate_limit_hops_independent_quotas_and_spoof_ignored(make_client):
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=2)
+    c = _peer_client("10.29.5.6")
+    post = lambda xff: c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": xff}).status_code  # noqa: E731
+    assert post(CHAIN_A) == 503
+    assert post(CHAIN_C) == 503  # otro cliente, mismo borde y mismo salto: cupo propio
+    assert post("203.0.113.7, " + CHAIN_A) == 429  # cabecera falsificada a la izquierda: misma clave que A
+    assert post(CHAIN_A) == 429
+
+
+def _cf_log(make_client, caplog, cf_header):
+    import logging
+
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=2)
+    c = _peer_client("10.29.5.6")
+    h = {"X-Forwarded-For": CHAIN_A, **cf_header}
+    with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
+        c.post("/ask", json={"question": "x"}, headers=h)
+        r = c.post("/ask", json={"question": "x"}, headers=h)
+    assert r.status_code == 429
+    return [x for x in caplog.records if "rate limit 429" in x.getMessage()][0].getMessage()
+
+
+@pytest.mark.parametrize(
+    "cf_header, expected",
+    [({"CF-Connecting-IP": "38.19.1.2"}, "yes"), ({"CF-Connecting-IP": "8.8.4.4"}, "no"), ({}, "absent")],
+)
+def test_ask_rate_limit_429_logs_cf_ip_match(make_client, caplog, cf_header, expected):
+    msg = _cf_log(make_client, caplog, cf_header)
+    assert f"cf_ip_match={expected}" in msg
+    assert "source=xff index_from_right=2 entries=3" in msg
+    assert "38.19.1.2" not in msg and "8.8.4.4" not in msg
+
+
+def test_negative_trusted_proxy_hops_rejected():
+    from docs_agent.config import Settings
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, trusted_proxy_hops=-1)
+
+
+def test_ask_rate_limit_short_chains_share_one_quota_and_log(make_client, caplog):
+    import logging
+
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=2)
+    c = _peer_client("10.29.5.6")
+    with caplog.at_level(logging.WARNING):
+        r1 = c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "38.19.1.2, 10.29.5.6"})
+        r2 = c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "179.7.8.9, 10.29.5.6"})
+    assert (r1.status_code, r2.status_code) == (503, 429)
+    msg = [x for x in caplog.records if "rate limit 429" in x.getMessage()][0].getMessage()
+    assert "key=untrusted-chain" in msg and "source=xff-short" in msg and "cf_ip_match=absent" in msg
+    assert "38.19.1.2" not in msg and "179.7.8.9" not in msg

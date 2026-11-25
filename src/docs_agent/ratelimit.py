@@ -6,8 +6,8 @@ IP del cliente y `X-Forwarded-For` (comprobado en la doc, Task 7 Step 0):
 - Render: la doc oficial (https://render.com/docs/web-services) no dice nada de la IP del cliente; la comunidad
   informa que su proxy NO filtra el `X-Forwarded-For` entrante y agrega la IP al final, así que el primer valor
   lo puede falsificar el cliente.
-Como la doc no garantiza el primer valor, se usa el valor más a la derecha que no sea un proxy confiable: es el
-que añadió el proxy de confianza, no el cliente.
+Como la doc no garantiza el primer valor, se cuentan N saltos confiables desde la derecha (`TRUSTED_PROXY_HOPS`,
+por defecto 2: salto interno de Render + borde de Cloudflare); lo que el cliente escriba queda a la izquierda.
 """
 
 import hashlib
@@ -81,28 +81,68 @@ def limit_key(ip: str) -> str:
     return str(parsed) if parsed is not None else ip
 
 
+UNTRUSTED_CHAIN = "untrusted-chain"  # clave compartida cuando la cadena de X-Forwarded-For no es fiable (falla cerrado)
+WARN_EVERY_S = 60.0
+
+_warn_clock: Callable[[], float] = time.monotonic  # inyectable en tests
+_last_warn: float | None = None
+_warn_lock = threading.Lock()
+
+
+def _warn_chain(count: int, hops: int) -> None:
+    """Aviso de cadena corta/inválida, como mucho una línea cada 60 s (reloj monotónico). Nunca loguea IPs."""
+    global _last_warn
+    now = _warn_clock()
+    with _warn_lock:
+        if _last_warn is not None and now - _last_warn < WARN_EVERY_S:
+            return
+        _last_warn = now
+    logger.warning(
+        "rate limit: X-Forwarded-For has %d entries, expected >= %d (or invalid entry); using shared key %s",
+        count,
+        hops + 1,
+        UNTRUSTED_CHAIN,
+    )
+
+
 @dataclass(frozen=True)
 class ClientResolution:
     """Cómo se resolvió la IP del cliente: la IP, de dónde salió y la cabecera `X-Forwarded-For` ya partida."""
 
     ip: str
-    source: Literal["peer", "xff"]
-    xff_index_from_right: int | None  # 0 = entrada más a la derecha; None si se usó el peer
+    source: Literal["peer", "xff", "xff-short", "xff-invalid"]
+    xff_index_from_right: int | None  # 0 = entrada más a la derecha; None si no se usó una entrada
     xff_entries: list[str]
 
 
-def resolve_client(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> ClientResolution:
-    """IP del cliente: el peer del socket, salvo que sea un proxy confiable y haya `X-Forwarded-For` válido.
+def resolve_client(
+    peer: str | None, forwarded_for: str | None, trusted: TrustedProxies, hops: int = 0
+) -> ClientResolution:
+    """IP del cliente: el peer del socket, salvo que sea un proxy confiable (compuerta `TRUSTED_PROXY_IPS`).
 
-    Se recorre la cabecera de derecha a izquierda y se devuelve la primera IP que no sea proxy confiable;
-    con `*` (todo confiable) se toma la última. Cualquier valor no-IP → se usa el peer. Un peer que no es IP
-    (p. ej. "testclient") nunca es confiable. Devuelve además qué entrada se usó (índice desde la derecha).
+    `hops = N > 0`: con peer confiable se toma la entrada N saltos desde la derecha de `X-Forwarded-For`
+    (`entries[-(N + 1)]`; p. ej. Render + Cloudflare = 2). Si la cadena es más corta, falta, o esa entrada no es
+    una IP, se usa la clave compartida `untrusted-chain` (falla cerrado) y se avisa (limitado a 1 por minuto).
+    `hops = 0`: recorre de derecha a izquierda y devuelve la primera IP que no sea proxy confiable; con `*`
+    toma la última. Cualquier valor no-IP → se usa el peer. Un peer que no es IP (p. ej. "testclient") nunca
+    es confiable.
     """
     fallback = peer or "unknown"
-    entries = [e.strip() for e in forwarded_for.split(",")] if forwarded_for else []
+    entries = [e for e in (p.strip() for p in forwarded_for.split(",")) if e] if forwarded_for else []
     from_peer = ClientResolution(fallback, "peer", None, entries)
     peer_ip = _as_ip(peer)
-    if peer_ip is None or peer_ip not in trusted or not forwarded_for:
+    if peer_ip is None or peer_ip not in trusted:
+        return from_peer
+    if hops > 0:
+        if len(entries) < hops + 1:
+            _warn_chain(len(entries), hops)
+            return ClientResolution(UNTRUSTED_CHAIN, "xff-short", None, entries)
+        ip = _as_ip(entries[-(hops + 1)])
+        if ip is None:
+            _warn_chain(len(entries), hops)
+            return ClientResolution(UNTRUSTED_CHAIN, "xff-invalid", None, entries)
+        return ClientResolution(str(ip), "xff", hops, entries)
+    if not forwarded_for:
         return from_peer
     for index, entry in enumerate(reversed(entries)):
         ip = _as_ip(entry)
@@ -111,6 +151,19 @@ def resolve_client(peer: str | None, forwarded_for: str | None, trusted: Trusted
         if trusted.all or ip not in trusted:
             return ClientResolution(str(ip), "xff", index, entries)
     return from_peer
+
+
+def cf_ip_match(cf_header: str | None, client_key: str) -> str:
+    """Diagnóstico para el log del 429: `absent` si falta `CF-Connecting-IP`; `n/a` si la clave resuelta no es una
+    IP (p. ej. `untrusted-chain`); `yes` si ambas normalizan a la misma clave (`limit_key`); si no, `no`.
+    Nunca se usa para la clave del limitador ni se loguea su valor."""
+    if cf_header is None:
+        return "absent"
+    if _as_ip(client_key) is None and "<no-ip>" == mask_ip(client_key):  # ni IP ni red /64
+        return "n/a"
+    if _as_ip(cf_header) is None:
+        return "no"
+    return "yes" if limit_key(cf_header) == limit_key(client_key) else "no"  # limit_key es idempotente en redes
 
 
 def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> str:

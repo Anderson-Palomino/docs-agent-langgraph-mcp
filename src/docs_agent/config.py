@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     eval_daily_token_budget: int = 600_000  # D39
     ask_rate_limit_per_hour: int = 20  # por IP; 0 = desactivado
     trusted_proxy_ips: str = ""  # IPs/CIDR separados por comas, o "*"; vacío = no confiar en X-Forwarded-For
+    trusted_proxy_hops: int = Field(default=2, ge=0)  # saltos de proxy desde la derecha de X-Forwarded-For; 0 = modo antiguo
     mcp_call_timeout_s: float = 15.0  # D30
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr = SecretStr("")
