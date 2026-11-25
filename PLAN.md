@@ -72,5 +72,5 @@ Hecho cuando: el README tiene la tabla de resultados y un link de demo en vivo.
 - [ ] S4: grabar el video de 2 minutos
 - [x] S4: PR #6 abierto, revisado y mergeado por el dueño (2026-11-25, `ca23d0d`; mergear = desplegar en Render)
 - [x] S4: verificación externa de la demo en vivo tras el deploy (`/health`, pregunta en español y en inglés con citas, una fuera del corpus con "no sé"; `docs/deploy.md`)
-- [ ] S4: prueba del 429 por el dueño y conclusión de D37 (clave del rate limiter en Render)
+- [x] S4: prueba del 429 por el dueño y conclusión de D37: la clave pasó de un salto interno de Render a la IP del cliente (`TRUSTED_PROXY_HOPS=2`, PR #7); A/B/C verificados en Render el 2026-11-25
 - [ ] S5 (pendiente): recalibrar el umbral con un holdout nuevo y estudiar el fallo de recuperación de h04 (D41)
