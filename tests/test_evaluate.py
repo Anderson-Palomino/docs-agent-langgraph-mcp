@@ -105,6 +105,27 @@ def run(ev, db_conn, *, client=None, tools=None, judge=True, max_tokens=400_000)
     )
 
 
+def _two_case_file(tmp_path: Path) -> Path:
+    """Dos casos válidos: no cumplen la distribución de 30 del golden set."""
+    cases = [
+        {"id": f"h{i:02d}", "question": f"pregunta {i}", "lang": "es", "category": "in_basic",
+         "expected_route": "answer", "expected_urls": [BODY], "notes": "n"}
+        for i in (1, 2)
+    ]
+    path = tmp_path / "holdout.json"
+    path.write_text(json.dumps(cases), encoding="utf-8")
+    return path
+
+
+def test_select_cases_holdout_skips_distribution(ev, tmp_path):
+    from docs_agent.evaluation.golden import GoldenSetError
+
+    path = _two_case_file(tmp_path)
+    assert [c.id for c in ev.select_cases(path, None, holdout=True)] == ["h01", "h02"]
+    with pytest.raises(GoldenSetError, match="distribución"):
+        ev.select_cases(path, None, holdout=False)
+
+
 def test_run_cases_three_cases(ev, db_conn):
     tools = QuestionTools()
     results, aborted = run(ev, db_conn, tools=tools)

@@ -15,9 +15,9 @@ NO_VALUE = "—"
 FENCE = "````"  # 4 acentos graves: los fragmentos de la doc traen bloques ``` propios
 
 
-def results_path(directory: Path, day: date, suffix: str = ".json") -> Path:
-    """`<día><suffix>`, o `<día>-2<suffix>`, `-3`… si ya existe: nunca pisa una corrida anterior."""
-    stem = day.isoformat()
+def results_path(directory: Path, day: date, suffix: str = ".json", label: str | None = None) -> Path:
+    """`<día>[-<label>]<suffix>`, o `…-2<suffix>`, `-3`… si ya existe: nunca pisa una corrida anterior."""
+    stem = f"{day.isoformat()}-{label}" if label else day.isoformat()
     path = Path(directory) / f"{stem}{suffix}"
     n = 2
     while path.exists():

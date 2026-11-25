@@ -76,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--golden", type=Path, default=DEFAULT_GOLDEN)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--holdout", action="store_true", help="set de holdout: sin chequeo de distribución")
     args = parser.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # ✓/✗ en consolas Windows que no son UTF-8
         if hasattr(stream, "reconfigure") and (stream.encoding or "").lower() != "utf-8":
@@ -95,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no se pudo leer sections de la base local: {type(exc).__name__}", file=sys.stderr)
         return EXIT_FAILED
 
-    problems = check_distribution(cases)
+    problems = [] if args.holdout else check_distribution(cases)
     missing = [(c.id, u) for c in cases for u in c.expected_urls if not url_exists(u, known)]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(render_review(cases, known, problems), encoding="utf-8")

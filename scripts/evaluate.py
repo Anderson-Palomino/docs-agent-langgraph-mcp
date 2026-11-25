@@ -3,6 +3,7 @@
 Uso:
     uv run python scripts/evaluate.py                         # los 30 casos, con juez
     uv run python scripts/evaluate.py --only g01,g05 --no-judge
+    uv run python scripts/evaluate.py --golden eval/holdout_es.json --holdout   # salidas `<día>-holdout.*`
 
 Cada caso pasa por el mismo camino que `/ask` (`make_deps` + `build_graph(deps).ainvoke` dentro de
 `invoke_recording`), con el servidor MCP real por stdio, pero todo el gasto va al kind `eval` (D39): grafo,
@@ -233,8 +234,10 @@ async def run_cases(
 # --- golden set, salidas y código de salida ---
 
 
-def select_cases(path: Path, only: str | None) -> list:
-    """Golden set validado; con `--only`, solo esos ids (deben existir) y sin chequeo de distribución."""
+def select_cases(path: Path, only: str | None, holdout: bool = False) -> list:
+    """Golden set validado; con `--only`, solo esos ids (deben existir) y sin chequeo de distribución.
+
+    `holdout=True` (set aparte, p. ej. `eval/holdout_es.json`): valida cada caso pero no exige la distribución de 30."""
     from docs_agent.evaluation.golden import GoldenSetError, check_distribution, load_golden
 
     cases = load_golden(path)
@@ -246,7 +249,7 @@ def select_cases(path: Path, only: str | None) -> list:
             raise GoldenSetError(f"--only: ids desconocidos: {', '.join(unknown) or '(vacío)'}")
         wanted = set(ids)
         return [c for c in cases if c.id in wanted]
-    problems = check_distribution(cases)
+    problems = [] if holdout else check_distribution(cases)
     if problems:
         raise GoldenSetError("el golden set no cumple la distribución: " + "; ".join(problems))
     return cases
@@ -281,14 +284,16 @@ def build_run_info(settings, day: date, golden_path: Path, only, max_tokens: int
     }
 
 
-def write_outputs(directory: Path, day: date, run: dict, results: list[dict], golden: list) -> list[Path]:
+def write_outputs(
+    directory: Path, day: date, run: dict, results: list[dict], golden: list, label: str | None = None
+) -> list[Path]:
     """Escribe `<stem>.json`, `<stem>.md` y `<stem>-judge-review.md` (mismo stem, sin pisar); devuelve las rutas."""
     from docs_agent.evaluation.metrics import compute_metrics, threshold_sweep
     from docs_agent.evaluation.report import render_judge_review, render_markdown, results_path
 
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    json_path = results_path(directory, day)
+    json_path = results_path(directory, day, label=label)
     md_path = json_path.with_suffix(".md")
     review_path = json_path.with_name(f"{json_path.stem}-judge-review.md")
     metrics = compute_metrics(results)
@@ -349,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--golden", type=Path, default=DEFAULT_GOLDEN, help="ruta del golden set")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, help="tope de tokens de la corrida")
     parser.add_argument("--only", help="ids separados por coma (p. ej. g01,g05)")
+    parser.add_argument("--holdout", action="store_true", help="set de holdout: sin chequeo de distribución y salidas con label")
     parser.add_argument("--no-judge", action="store_true", help="no correr el LLM juez")
     args = parser.parse_args(argv)
 
@@ -361,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Antes de abrir OpenAI o el servidor MCP: un golden set mal formado no gasta un token.
     try:
-        cases = select_cases(args.golden, args.only)
+        cases = select_cases(args.golden, args.only, holdout=args.holdout)
     except GoldenSetError as exc:
         console.print(Text(f"Golden set inválido: {exc}", style="red"))
         return EXIT_FAILED
@@ -429,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
 
     day = datetime.now(LIMA).date()
     run = build_run_info(settings, day, args.golden, args.only, args.max_tokens, judge, aborted, results)
-    paths = write_outputs(RESULTS_DIR, day, run, results, cases)
+    paths = write_outputs(RESULTS_DIR, day, run, results, cases, label="holdout" if args.holdout else None)
 
     console.print()
     console.print(summary_table(run, results))

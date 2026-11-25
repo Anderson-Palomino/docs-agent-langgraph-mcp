@@ -77,6 +77,14 @@ def test_results_path_no_pisa(tmp_path):
     assert results_path(tmp_path, day, ".md") == tmp_path / "2026-11-18.md"
 
 
+def test_results_path_with_label_does_not_overwrite(tmp_path):
+    day = date(2026, 11, 24)
+    assert results_path(tmp_path, day, label="holdout") == tmp_path / "2026-11-24-holdout.json"
+    (tmp_path / "2026-11-24-holdout.json").write_text("{}", encoding="utf-8")
+    assert results_path(tmp_path, day, label="holdout") == tmp_path / "2026-11-24-holdout-2.json"
+    assert results_path(tmp_path, day) == tmp_path / "2026-11-24.json"
+
+
 # --- render_markdown ---
 
 

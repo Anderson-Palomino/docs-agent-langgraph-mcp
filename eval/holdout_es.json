@@ -1,0 +1,62 @@
+[
+  {
+    "id": "h01",
+    "question": "Mi frontend en React corre en otro puerto y el navegador me bloquea las llamadas a mi API. ¿Cómo habilito CORS?",
+    "lang": "es",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/cors/"],
+    "notes": "Página que el golden set no usa. Redactada como síntoma de usuario (bloqueo del navegador), sin decir 'CORSMiddleware'.",
+    "judge_review": false
+  },
+  {
+    "id": "h02",
+    "question": "¿Cómo sirvo imágenes y archivos CSS desde una carpeta de mi proyecto?",
+    "lang": "es",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/static-files/"],
+    "notes": "Página que el golden set no usa. No menciona StaticFiles ni 'mount'; el usuario describe lo que quiere lograr.",
+    "judge_review": false
+  },
+  {
+    "id": "h03",
+    "question": "Quiero mandar un correo de confirmación después de responder al cliente, sin que tenga que esperar. ¿Cómo lo hago?",
+    "lang": "es",
+    "category": "in_intermediate",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/background-tasks/"],
+    "notes": "Página que el golden set no usa. Pregunta por el caso de uso (correo tras responder), no por BackgroundTasks.",
+    "judge_review": false
+  },
+  {
+    "id": "h04",
+    "question": "¿Cómo leo el User-Agent que manda el cliente en una operación de path?",
+    "lang": "es",
+    "category": "in_basic",
+    "expected_route": "answer",
+    "expected_urls": ["https://fastapi.tiangolo.com/tutorial/header-params/"],
+    "notes": "Página que el golden set no usa (g15 es cookies, g16 cabeceras de respuesta). Aquí son cabeceras de la petición.",
+    "judge_review": false
+  },
+  {
+    "id": "h05",
+    "question": "¿Cómo defino un blueprint en Flask para agrupar rutas?",
+    "lang": "es",
+    "category": "out_near",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Fuera de alcance cercano: framework web vecino con vocabulario parecido (rutas, agrupar). El golden set tiene Flask en inglés (g21); aquí va en español.",
+    "judge_review": false
+  },
+  {
+    "id": "h06",
+    "question": "¿Cuántas calorías tiene una porción de arroz con pollo?",
+    "lang": "es",
+    "category": "out_obvious",
+    "expected_route": "no_se",
+    "expected_urls": [],
+    "notes": "Fuera de alcance obvio: pregunta no técnica, de otro dominio.",
+    "judge_review": false
+  }
+]
