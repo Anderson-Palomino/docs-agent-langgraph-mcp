@@ -23,6 +23,8 @@
 - Solo datos públicos; nada de BaldeCash, GENIA ni clientes.
 - La evaluación corre contra la base local con kind `eval` (D39); nunca contra producción.
 - Nada de push, PR, merge ni despliegue dentro de las tareas de código; eso lo hace el controlador con permiso del dueño.
+- **Las tres pausas (URLs del holdout, aprobación del despliegue, hoja del juez) las respeta la sesión principal.** Ningún subagente corre `evaluate.py`, `measure_dual_query.py` ni nada que gaste tokens de OpenAI, ni avanza más allá de su tarea; las Tasks 8–12 son del controlador.
+- Ninguna petición contra producción (`docs-agent-cqpr.onrender.com`) desde subagentes; la prueba del 429 la hace el dueño.
 
 ## Review Focus
 
@@ -168,7 +170,13 @@
   - API (`caplog`, límite 1): la segunda petición con `X-Forwarded-For: 9.9.9.9, 181.65.10.20` → 429 y un WARNING de `docs_agent.api` con `key=181.65.x.x`, `source=xff`, `index_from_right=0`, `entries=2` y las entradas enmascaradas; el texto completo del log no contiene `181.65.10.20` ni `9.9.9.9`; la primera petición (200) no loguea nada de esto; el cuerpo y las cabeceras del 429 no cambian.
 - [ ] **Step 2:** FAIL. **Step 3:** implementar; el warning se emite solo cuando `retry_after is not None`. Comprobar que un `logger.warning` de `docs_agent.api` sale a stderr con la configuración de uvicorn del contenedor (ya existe uno en `api.py:66`; si no saliera, usar el mismo mecanismo que ese).
 - [ ] **Step 4:** `uv run pytest -q` verde.
-- [ ] **Step 5: `docs/deploy.md`**, sección "Verificar la clave del límite por IP": el valor de `ASK_RATE_LIMIT` en producción (leer el nombre de la variable en `config.py`, no el valor del `.env`); un bucle de `curl` en PowerShell que haga `límite + 1` peticiones a `/ask` (cuerpo UTF-8 desde archivo con `--data-binary`); lo mismo con `-H "X-Forwarded-For: 1.2.3.4"`; repetir desde los datos móviles; en Render: servicio `docs-agent` → Logs → buscar `rate limit 429`; cómo leer `index_from_right`/`entries` y qué significaría cada resultado (entrada de la derecha = la agrega el proxy de Render y no se falsifica; si aparecen saltos propios de Render, la clave sería un salto).
+- [ ] **Step 5: `docs/deploy.md`**, sección "Verificar la clave del límite por IP". Son **instrucciones para el dueño**: ningún subagente ni el controlador lanza peticiones contra producción.
+  - Endpoint: `POST /ask` con cuerpo `{}` → 422 de validación, que **consume cupo sin gastar tokens** (D37); `/health` no pasa por el limitador. Límite: `ASK_RATE_LIMIT_PER_HOUR` (20 por defecto, `config.py`).
+  - Caso A (red fija): 21 peticiones → 20 × 422 y la 21.ª 429; la línea del log `rate limit 429` con `source=xff`, `index_from_right`, `entries` y `key` enmascarada.
+  - Caso B (cabecera falsificada, misma red, dentro de la hora): 1 petición con `-H "X-Forwarded-For: 203.0.113.7"` → 429; la línea debe tener la **misma** `key` que A y mostrar `203.0.x.x` a la izquierda (más entradas, mismo `index_from_right`).
+  - Caso C (datos móviles): 21 peticiones → 429 en la 21.ª con una `key` distinta de A.
+  - Qué significa cada resultado: misma `key` en A y B + `key` distinta en C + `entries` estable → la clave es por cliente y la entrada de la derecha la agrega el proxy de Render; `entries` que varía o `key` que cambia en la misma red sin cambiar de IP pública → hay un salto propio de Render a la derecha (habría que confiar en N saltos).
+  - Comandos en PowerShell (`curl.exe` con `--data-binary "{}"` y `-H "Content-Type: application/json"`), contador de códigos al final; dónde mirar: Render → servicio `docs-agent` → Logs → buscar `rate limit 429`. Aviso: cada tanda bloquea `/ask` una hora desde esa red.
 - [ ] **Step 6: Commit** → `feat(ratelimit): log del 429 con la clave enmascarada (D37)`.
 
 ### Task 8 (controlador): Corridas reales, D40 y pausa 2
