@@ -1,0 +1,532 @@
+{
+  "run": {
+    "date": "2026-11-25",
+    "chat_model": "gpt-4.1-mini",
+    "judge_model": "gpt-4.1-mini",
+    "judge": true,
+    "threshold": 0.52,
+    "top_k": 5,
+    "docs_ref": "0.162.0",
+    "golden": "eval/holdout_es.json",
+    "only": null,
+    "max_tokens": 400000,
+    "aborted": null,
+    "n_cases_run": 6,
+    "tokens_total": 11688,
+    "cost_total_usd_all": 0.0066839
+  },
+  "cases": [
+    {
+      "id": "h01",
+      "question": "Mi frontend en React corre en otro puerto y el navegador me bloquea las llamadas a mi API. ¿Cómo habilito CORS?",
+      "lang": "es",
+      "category": "in_intermediate",
+      "expected_route": "answer",
+      "expected_urls": [
+        "https://fastapi.tiangolo.com/tutorial/cors/"
+      ],
+      "route": "answer",
+      "reason": null,
+      "is_fastapi": true,
+      "classifier_reason": "La pregunta es sobre cómo habilitar CORS en una API, un tema cubierto en la documentación de FastAPI.",
+      "language": "es",
+      "search_query": "How to enable CORS in FastAPI to allow requests from a React frontend running on a different port?",
+      "translated": true,
+      "best_distance": 0.4176,
+      "retrieved_urls": [
+        "https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware",
+        "https://fastapi.tiangolo.com/advanced/websockets/",
+        "https://fastapi.tiangolo.com/tutorial/cors/#more-info",
+        "https://fastapi.tiangolo.com/tutorial/frontend/#client-side-routing",
+        "https://fastapi.tiangolo.com/advanced/behind-a-proxy/#enable-proxy-forwarded-headers"
+      ],
+      "citations": [
+        "https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware"
+      ],
+      "grounded": true,
+      "answer": "Para habilitar CORS en tu aplicación FastAPI y permitir que tu frontend en React (que corre en otro puerto) pueda hacer llamadas a tu API sin ser bloqueadas por el navegador, debes usar el middleware `CORSMiddleware`.\n\nLos pasos son:\n\n1. Importa `CORSMiddleware` desde `fastapi.middleware.cors`.\n2. Define una lista con los orígenes permitidos (por ejemplo, la URL y puerto donde corre tu frontend React).\n3. Añade el middleware a tu aplicación FastAPI con los parámetros adecuados, como `allow_origins` con la lista de orígenes, `allow_credentials=True` si usas cookies o headers de autorización, y `allow_methods` y `allow_headers` según necesites.\n\nEjemplo básico:\n\n```python\nfrom fastapi import FastAPI\nfrom fastapi.middleware.cors import CORSMiddleware\n\napp = FastAPI()\n\norigins = [\n    \"http://localhost:3000\",  # Cambia este puerto al que usa tu React\n]\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=origins,\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\n@app.get(\"/\")\nasync def main():\n    return {\"message\": \"Hello World\"}\n```\n\nCon esto, tu backend permitirá solicitudes CORS desde el origen especificado y el navegador no bloqueará las llamadas.\n\nReferencia: https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware",
+      "tools_used": [
+        "search_docs",
+        "get_section"
+      ],
+      "usage": {
+        "classifier_prompt_tokens": 546,
+        "classifier_completion_tokens": 62,
+        "embedding_tokens": 20,
+        "prompt_tokens": 1645,
+        "completion_tokens": 374
+      },
+      "tokens": 2647,
+      "cost_usd": 0.0015744,
+      "latency_ms": 5722.949099988909,
+      "judge_context": "[1] CORS (Cross-Origin Resource Sharing) > Use `CORSMiddleware`\nURL: https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware\n## Use `CORSMiddleware`\n\nYou can configure it in your **FastAPI** application using the `CORSMiddleware`.\n\n* Import `CORSMiddleware`.\n* Create a list of allowed origins (as strings).\n* Add it as a \"middleware\" to your **FastAPI** application.\n\nYou can also specify whether your backend allows:\n\n* Credentials (Authorization headers, Cookies, etc).\n* Specific HTTP methods (`POST`, `PUT`) or all of them with the wildcard `\"*\"`.\n* Specific HTTP headers or all of them with the wildcard `\"*\"`.\n\n```python\nfrom fastapi import FastAPI\nfrom fastapi.middleware.cors import CORSMiddleware  # highlight\n\napp = FastAPI()\n\norigins = [  # highlight\n    \"http://localhost.tiangolo.com\",  # highlight\n    \"https://localhost.tiangolo.com\",  # highlight\n    \"http://localhost\",  # highlight\n    \"http://localhost:8080\",  # highlight\n]  # highlight\n\napp.add_middleware(  # highlight\n    CORSMiddleware,  # highlight\n    allow_origins=origins,  # highlight\n    allow_credentials=True,  # highlight\n    allow_methods=[\"*\"],  # highlight\n    allow_headers=[\"*\"],  # highlight\n)  # highlight\n\n\n@app.get(\"/\")\nasync def main():\n    return {\"message\": \"Hello World\"}\n```\n\n\nThe default parameters used by the `CORSMiddleware` implementation are restrictive by default, so you'll need to explicitly enable particular origins, methods, or headers, in order for browsers to be permitted to use them in a Cross-Domain context.\n\nThe following arguments are supported:\n\n* `allow_origins` - A list of origins that should be permitted to make cross-origin requests. E.g. `['https://example.org', 'https://www.example.org']`. You can use `['*']` to allow any origin.\n* `allow_origin_regex` - A regex string to match against origins that should be permitted to make cross-origin requests. e.g. `'https://.*\\.example\\.org'`.\n* `allow_methods` - A list of HTTP methods that should be allowed for cross-origin requests. Defaults to `['GET']`. You can use `['*']` to allow all standard methods.\n* `allow_headers` - A list of HTTP request headers that should be supported for cross-origin requests. Defaults to `[]`. You can use `['*']` to allow all headers. The `Accept`, `Accept-Language`, `Content-Language` and `Content-Type` headers are always allowed for [simple CORS requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests).\n* `allow_credentials` - Indicate that cookies should be supported for cross-origin requests. Defaults to `False`.\n\n    None of `allow_origins`, `allow_methods` and `allow_headers` can be set to `['*']` if `allow_credentials` is set to `True`. All of them must be [explicitly specified](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#credentialed_requests_and_wildcards).\n\n* `expose_headers` - Indicate any response headers that should be made accessible to the browser. Defaults to `[]`.\n* `max_age` - Sets a maximum time in seconds for browsers to cache CORS responses. Defaults to `600`.\n\nThe middleware responds to two particular types of HTTP request...\n\n[2] WebSockets\nURL: https://fastapi.tiangolo.com/advanced/websockets/\n# WebSockets { #websockets }\n\nYou can use [WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) with **FastAPI**.\n\n[3] CORS (Cross-Origin Resource Sharing) > More info\nURL: https://fastapi.tiangolo.com/tutorial/cors/#more-info\n## More info { #more-info }\n\nFor more info about <abbr title=\"Cross-Origin Resource Sharing\">CORS</abbr>, check the [Mozilla CORS documentation](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS).\n\n/// note | Technical Details\n\nYou could also use `from starlette.middleware.cors import CORSMiddleware`.\n\n**FastAPI** provides several middlewares in `fastapi.middleware` just as a convenience for you, the developer. But most of the available middlewares come directly from Starlette.\n\n///\n\n[4] Frontend > Client-Side Routing\nURL: https://fastapi.tiangolo.com/tutorial/frontend/#client-side-routing\n## Client-Side Routing { #client-side-routing }\n\nMany frontend apps, including **single-page apps** (SPAs), use client-side routing. A path like `/dashboard/settings` might not be a real file but the framework would take care of handling it.\n\nSo, if accessing that URL directly (instead of navigating through the app), the backend should serve the frontend app from `index.html`, so that the frontend framework can then handle the client-side routing.\n\nFor that, use `fallback=\"index.html\"`:\n\n```python\nfrom fastapi import FastAPI\n\napp = FastAPI()\n\napp.frontend(\"/\", directory=\"dist\", fallback=\"index.html\")  # highlight\n```\n\n**FastAPI** uses this fallback only for `GET` and `HEAD` requests that explicitly accept HTML with `Accept: text/html` or `Accept: application/xhtml+xml`, as browser navigation requests normally do. Missing files like JavaScript, CSS, and images still return `404`.\n\nRequests with other methods, like `POST` or `PUT`, to paths that only match the frontend fallback also return `404`. Regular **FastAPI** *path operations* still have higher priority than frontend routes.\n\n/// tip\n\nBy default, `fallback` has a value of `fallback=\"auto\"`. In most cases you won't need to specify `fallback`. Read below for details.\n\n///\n\nThis is what you would want with many frontend apps that use client-side routing, for example, React with TanStack Router, Vue, Angular, SvelteKit, or Solid.\n\n[5] Behind a Proxy > Enable Proxy Forwarded Headers\nURL: https://fastapi.tiangolo.com/advanced/behind-a-proxy/#enable-proxy-forwarded-headers\n### Enable Proxy Forwarded Headers { #enable-proxy-forwarded-headers }\n\nYou can start FastAPI CLI with the *CLI Option* `--forwarded-allow-ips` and pass the IP addresses that should be trusted to read those forwarded headers.\n\nIf you set it to `--forwarded-allow-ips=\"*\"` it would trust all the incoming IPs.\n\nIf your **server** is behind a trusted **proxy** and only the proxy talks to it, this would make it accept whatever is the IP of that **proxy**.\n\n<div class=\"termy\">\n\n```console\n$ uv run fastapi run --forwarded-allow-ips=\"*\"\n```\n\n</div>",
+      "context_parts": [
+        {
+          "n": 1,
+          "title": "CORS (Cross-Origin Resource Sharing) > Use `CORSMiddleware`",
+          "url": "https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware",
+          "section": true
+        },
+        {
+          "n": 2,
+          "title": "WebSockets",
+          "url": "https://fastapi.tiangolo.com/advanced/websockets/",
+          "section": false
+        },
+        {
+          "n": 3,
+          "title": "CORS (Cross-Origin Resource Sharing) > More info",
+          "url": "https://fastapi.tiangolo.com/tutorial/cors/#more-info",
+          "section": false
+        },
+        {
+          "n": 4,
+          "title": "Frontend > Client-Side Routing",
+          "url": "https://fastapi.tiangolo.com/tutorial/frontend/#client-side-routing",
+          "section": false
+        },
+        {
+          "n": 5,
+          "title": "Behind a Proxy > Enable Proxy Forwarded Headers",
+          "url": "https://fastapi.tiangolo.com/advanced/behind-a-proxy/#enable-proxy-forwarded-headers",
+          "section": false
+        }
+      ],
+      "judge": {
+        "score": 1.0,
+        "unsupported_claims": [],
+        "reason": "Todas las afirmaciones están explícitamente cubiertas por el contexto proporcionado, incluyendo el uso de CORSMiddleware, configuración de orígenes, métodos, headers y ejemplo de código.",
+        "claims": [
+          {
+            "text": "Para habilitar CORS en tu aplicación FastAPI y permitir que tu frontend en React (que corre en otro puerto) pueda hacer llamadas a tu API sin ser bloqueadas por el navegador, debes usar el middleware `CORSMiddleware`.",
+            "supported": true
+          },
+          {
+            "text": "Importa `CORSMiddleware` desde `fastapi.middleware.cors`.",
+            "supported": true
+          },
+          {
+            "text": "Define una lista con los orígenes permitidos (por ejemplo, la URL y puerto donde corre tu frontend React).",
+            "supported": true
+          },
+          {
+            "text": "Añade el middleware a tu aplicación FastAPI con los parámetros adecuados, como `allow_origins` con la lista de orígenes, `allow_credentials=True` si usas cookies o headers de autorización, y `allow_methods` y `allow_headers` según necesites.",
+            "supported": true
+          },
+          {
+            "text": "Ejemplo básico: importación de FastAPI y CORSMiddleware, definición de app y lista origins con \"http://localhost:3000\".",
+            "supported": true
+          },
+          {
+            "text": "Ejemplo básico: añadir middleware con CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=[\"*\"], allow_headers=[\"*\"].",
+            "supported": true
+          },
+          {
+            "text": "Ejemplo básico: definición de ruta GET \"/\" que retorna {\"message\": \"Hello World\"}.",
+            "supported": true
+          },
+          {
+            "text": "Con esto, tu backend permitirá solicitudes CORS desde el origen especificado y el navegador no bloqueará las llamadas.",
+            "supported": true
+          },
+          {
+            "text": "Referencia: https://fastapi.tiangolo.com/tutorial/cors/#use-corsmiddleware",
+            "supported": true
+          }
+        ]
+      },
+      "judge_tokens": 2650,
+      "judge_cost_usd": 0.0015112,
+      "judge_error": null,
+      "error": null
+    },
+    {
+      "id": "h02",
+      "question": "¿Cómo sirvo imágenes y archivos CSS desde una carpeta de mi proyecto?",
+      "lang": "es",
+      "category": "in_basic",
+      "expected_route": "answer",
+      "expected_urls": [
+        "https://fastapi.tiangolo.com/tutorial/static-files/"
+      ],
+      "route": "no_se",
+      "reason": "insufficient_context",
+      "is_fastapi": true,
+      "classifier_reason": "La pregunta es sobre cómo servir archivos estáticos, un tema cubierto en la documentación de FastAPI.",
+      "language": "es",
+      "search_query": "How to serve images and CSS files from a folder in my project",
+      "translated": true,
+      "best_distance": 0.523,
+      "retrieved_urls": [
+        "https://fastapi.tiangolo.com/how-to/custom-docs-ui-assets/#self-hosting-javascript-and-css-for-docs",
+        "https://fastapi.tiangolo.com/reference/staticfiles/",
+        "https://fastapi.tiangolo.com/tutorial/static-files/",
+        "https://fastapi.tiangolo.com/how-to/custom-docs-ui-assets/",
+        "https://fastapi.tiangolo.com/tutorial/frontend/#serve-a-frontend"
+      ],
+      "citations": [],
+      "grounded": false,
+      "answer": "No encontré esto en la documentación de FastAPI indexada, así que no voy a inventar una respuesta.",
+      "tools_used": [
+        "search_docs"
+      ],
+      "usage": {
+        "classifier_prompt_tokens": 533,
+        "classifier_completion_tokens": 51,
+        "embedding_tokens": 13,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      "tokens": 597,
+      "cost_usd": 0.00029506,
+      "latency_ms": 1517.182799987495,
+      "judge_context": null,
+      "context_parts": [],
+      "judge": null,
+      "judge_tokens": 0,
+      "judge_cost_usd": 0.0,
+      "judge_error": null,
+      "error": null
+    },
+    {
+      "id": "h03",
+      "question": "Quiero mandar un correo de confirmación después de responder al cliente, sin que tenga que esperar. ¿Cómo lo hago?",
+      "lang": "es",
+      "category": "in_intermediate",
+      "expected_route": "answer",
+      "expected_urls": [
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/"
+      ],
+      "route": "answer",
+      "reason": null,
+      "is_fastapi": true,
+      "classifier_reason": "La pregunta trata sobre cómo enviar un correo de confirmación de forma asíncrona, un tema cubierto en la documentación de FastAPI sobre tareas en segundo plano (Background Tasks).",
+      "language": "es",
+      "search_query": "How to send a confirmation email after responding to the client without making them wait using Background Tasks in FastAPI",
+      "translated": true,
+      "best_distance": 0.4079,
+      "retrieved_urls": [
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/",
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks",
+        "https://fastapi.tiangolo.com/reference/background/",
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/#add-the-background-task",
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/#caveat"
+      ],
+      "citations": [
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/",
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks",
+        "https://fastapi.tiangolo.com/tutorial/background-tasks/#add-the-background-task"
+      ],
+      "grounded": true,
+      "answer": "Para enviar un correo de confirmación después de responder al cliente sin que tenga que esperar, puedes usar la funcionalidad de tareas en segundo plano (`BackgroundTasks`) de FastAPI. Primero, defines una función que envíe el correo (por ejemplo, `send_email`). Luego, en tu función de operación de ruta, agregas esta función como una tarea en segundo plano usando el parámetro `background_tasks` de tipo `BackgroundTasks` y el método `.add_task()`. De esta forma, FastAPI devolverá la respuesta inmediatamente y ejecutará el envío del correo en segundo plano.\n\nEjemplo básico:\n\n```python\nfrom fastapi import BackgroundTasks, FastAPI\n\napp = FastAPI()\n\ndef send_email(email: str, message: str):\n    # lógica para enviar el correo\n    pass\n\n@app.post(\"/send-confirmation/{email}\")\nasync def send_confirmation(email: str, background_tasks: BackgroundTasks):\n    background_tasks.add_task(send_email, email, message=\"Confirmación de registro\")\n    return {\"message\": \"Correo de confirmación enviado en segundo plano\"}\n```\n\nAsí, el cliente recibe la respuesta sin esperar a que el correo sea enviado.\n\nReferencias: [1], [2], [4]",
+      "tools_used": [
+        "search_docs",
+        "get_section"
+      ],
+      "usage": {
+        "classifier_prompt_tokens": 544,
+        "classifier_completion_tokens": 76,
+        "embedding_tokens": 21,
+        "prompt_tokens": 1088,
+        "completion_tokens": 330
+      },
+      "tokens": 2059,
+      "cost_usd": 0.00130282,
+      "latency_ms": 5094.003899983363,
+      "judge_context": "[1] Background Tasks\nURL: https://fastapi.tiangolo.com/tutorial/background-tasks/\n# Background Tasks\n\nYou can define background tasks to be run *after* returning a response.\n\nThis is useful for operations that need to happen after a request, but that the client doesn't really have to be waiting for the operation to complete before receiving the response.\n\nThis includes, for example:\n\n* Email notifications sent after performing an action:\n    * As connecting to an email server and sending an email tends to be \"slow\" (several seconds), you can return the response right away and send the email notification in the background.\n* Processing data:\n    * For example, let's say you receive a file that must go through a slow process, you can return a response of \"Accepted\" (HTTP 202) and process the file in the background.\n\n[2] Background Tasks > Using `BackgroundTasks`\nURL: https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks\n## Using `BackgroundTasks` { #using-backgroundtasks }\n\nFirst, import `BackgroundTasks` and define a parameter in your *path operation function* with a type declaration of `BackgroundTasks`:\n\n```python\nfrom fastapi import BackgroundTasks, FastAPI  # highlight\n\napp = FastAPI()\n\n\ndef write_notification(email: str, message=\"\"):\n    with open(\"log.txt\", mode=\"w\") as email_file:\n        content = f\"notification for {email}: {message}\"\n        email_file.write(content)\n\n\n@app.post(\"/send-notification/{email}\")\nasync def send_notification(email: str, background_tasks: BackgroundTasks):  # highlight\n    background_tasks.add_task(write_notification, email, message=\"some notification\")\n    return {\"message\": \"Notification sent in the background\"}\n```\n\n**FastAPI** will create the object of type `BackgroundTasks` for you and pass it as that parameter.\n\n[3] Background Tasks - `BackgroundTasks`\nURL: https://fastapi.tiangolo.com/reference/background/\n# Background Tasks - `BackgroundTasks`\n\nYou can declare a parameter in a *path operation function* or dependency function with the type `BackgroundTasks`, and then you can use it to schedule the execution of background tasks after the response is sent.\n\nYou can import it directly from `fastapi`:\n\n```python\nfrom fastapi import BackgroundTasks\n```\n\n::: fastapi.BackgroundTasks\n\n[4] Background Tasks > Add the background task\nURL: https://fastapi.tiangolo.com/tutorial/background-tasks/#add-the-background-task\n## Add the background task { #add-the-background-task }\n\nInside of your *path operation function*, pass your task function to the *background tasks* object with the method `.add_task()`:\n\n```python\nfrom fastapi import BackgroundTasks, FastAPI\n\napp = FastAPI()\n\n\ndef write_notification(email: str, message=\"\"):\n    with open(\"log.txt\", mode=\"w\") as email_file:\n        content = f\"notification for {email}: {message}\"\n        email_file.write(content)\n\n\n@app.post(\"/send-notification/{email}\")\nasync def send_notification(email: str, background_tasks: BackgroundTasks):\n    background_tasks.add_task(write_notification, email, message=\"some notification\")  # highlight\n    return {\"message\": \"Notification sent in the background\"}\n```\n\n`.add_task()` receives as arguments:\n\n* A task function to be run in the background (`write_notification`).\n* Any sequence of arguments that should be passed to the task function in order (`email`).\n* Any keyword arguments that should be passed to the task function (`message=\"some notification\"`).\n\n[5] Background Tasks > Caveat\nURL: https://fastapi.tiangolo.com/tutorial/background-tasks/#caveat\n## Caveat { #caveat }\n\nIf you need to perform heavy background computation and you don't necessarily need it to be run by the same process (for example, you don't need to share memory, variables, etc), you might benefit from using other bigger tools like [Celery](https://docs.celeryq.dev).\n\nThey tend to require more complex configurations, a message/job queue manager, like RabbitMQ or Redis, but they allow you to run background tasks in multiple processes, and especially, in multiple servers.\n\nBut if you need to access variables and objects from the same **FastAPI** app, or you need to perform small background tasks (like sending an email notification), you can simply just use `BackgroundTasks`.",
+      "context_parts": [
+        {
+          "n": 1,
+          "title": "Background Tasks",
+          "url": "https://fastapi.tiangolo.com/tutorial/background-tasks/",
+          "section": true
+        },
+        {
+          "n": 2,
+          "title": "Background Tasks > Using `BackgroundTasks`",
+          "url": "https://fastapi.tiangolo.com/tutorial/background-tasks/#using-backgroundtasks",
+          "section": false
+        },
+        {
+          "n": 3,
+          "title": "Background Tasks - `BackgroundTasks`",
+          "url": "https://fastapi.tiangolo.com/reference/background/",
+          "section": false
+        },
+        {
+          "n": 4,
+          "title": "Background Tasks > Add the background task",
+          "url": "https://fastapi.tiangolo.com/tutorial/background-tasks/#add-the-background-task",
+          "section": false
+        },
+        {
+          "n": 5,
+          "title": "Background Tasks > Caveat",
+          "url": "https://fastapi.tiangolo.com/tutorial/background-tasks/#caveat",
+          "section": false
+        }
+      ],
+      "judge": {
+        "score": 1.0,
+        "unsupported_claims": [],
+        "reason": "Todas las afirmaciones del asistente están explícitamente soportadas por el contexto proporcionado, incluyendo la explicación y el ejemplo de código para usar BackgroundTasks para enviar correos en segundo plano sin que el cliente espere.",
+        "claims": [
+          {
+            "text": "Para enviar un correo de confirmación después de responder al cliente sin que tenga que esperar, puedes usar la funcionalidad de tareas en segundo plano (`BackgroundTasks`) de FastAPI.",
+            "supported": true
+          },
+          {
+            "text": "Primero, defines una función que envíe el correo (por ejemplo, `send_email`).",
+            "supported": true
+          },
+          {
+            "text": "Luego, en tu función de operación de ruta, agregas esta función como una tarea en segundo plano usando el parámetro `background_tasks` de tipo `BackgroundTasks` y el método `.add_task()`.",
+            "supported": true
+          },
+          {
+            "text": "De esta forma, FastAPI devolverá la respuesta inmediatamente y ejecutará el envío del correo en segundo plano.",
+            "supported": true
+          },
+          {
+            "text": "Ejemplo básico: importas BackgroundTasks y FastAPI, defines la función send_email, defines la ruta /send-confirmation/{email} que recibe background_tasks de tipo BackgroundTasks, y usas background_tasks.add_task(send_email, email, message=\"Confirmación de registro\") para enviar el correo en segundo plano.",
+            "supported": true
+          },
+          {
+            "text": "Así, el cliente recibe la respuesta sin esperar a que el correo sea enviado.",
+            "supported": true
+          }
+        ]
+      },
+      "judge_tokens": 1950,
+      "judge_cost_usd": 0.0011268000000000003,
+      "judge_error": null,
+      "error": null
+    },
+    {
+      "id": "h04",
+      "question": "¿Cómo leo el User-Agent que manda el cliente en una operación de path?",
+      "lang": "es",
+      "category": "in_basic",
+      "expected_route": "answer",
+      "expected_urls": [
+        "https://fastapi.tiangolo.com/tutorial/header-params/"
+      ],
+      "route": "no_se",
+      "reason": "insufficient_context",
+      "is_fastapi": true,
+      "classifier_reason": "La pregunta es sobre cómo acceder a cabeceras HTTP en una operación de path, un tema cubierto en la documentación de FastAPI.",
+      "language": "es",
+      "search_query": "How to read the User-Agent header sent by the client in a path operation?",
+      "translated": true,
+      "best_distance": 0.6028,
+      "retrieved_urls": [
+        "https://fastapi.tiangolo.com/tutorial/security/get-current-user/#recap",
+        "https://fastapi.tiangolo.com/advanced/generate-clients/#generate-a-typescript-client-with-custom-operation-ids",
+        "https://fastapi.tiangolo.com/tutorial/security/get-current-user/",
+        "https://fastapi.tiangolo.com/tutorial/header-params/#automatic-conversion",
+        "https://fastapi.tiangolo.com/advanced/generate-clients/#custom-operation-ids-and-better-method-names"
+      ],
+      "citations": [],
+      "grounded": false,
+      "answer": "No encontré esto en la documentación de FastAPI indexada, así que no voy a inventar una respuesta.",
+      "tools_used": [
+        "search_docs"
+      ],
+      "usage": {
+        "classifier_prompt_tokens": 534,
+        "classifier_completion_tokens": 61,
+        "embedding_tokens": 16,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      "tokens": 611,
+      "cost_usd": 0.00031152,
+      "latency_ms": 1580.8399000088684,
+      "judge_context": null,
+      "context_parts": [],
+      "judge": null,
+      "judge_tokens": 0,
+      "judge_cost_usd": 0.0,
+      "judge_error": null,
+      "error": null
+    },
+    {
+      "id": "h05",
+      "question": "¿Cómo defino un blueprint en Flask para agrupar rutas?",
+      "lang": "es",
+      "category": "out_near",
+      "expected_route": "no_se",
+      "expected_urls": [],
+      "route": "no_se",
+      "reason": "out_of_domain",
+      "is_fastapi": false,
+      "classifier_reason": "The question is about Flask, which is not covered by the FastAPI documentation.",
+      "language": "es",
+      "search_query": "How to define a blueprint in Flask to group routes?",
+      "translated": true,
+      "best_distance": 0.5233,
+      "retrieved_urls": [
+        "https://fastapi.tiangolo.com/tutorial/bigger-applications/",
+        "https://fastapi.tiangolo.com/alternatives/#flask",
+        "https://fastapi.tiangolo.com/tutorial/bigger-applications/#apirouter",
+        "https://fastapi.tiangolo.com/how-to/custom-request-and-route/#custom-apiroute-class-in-a-router",
+        "https://fastapi.tiangolo.com/tutorial/frontend/#use-it-with-apirouter"
+      ],
+      "citations": [],
+      "grounded": false,
+      "answer": "No encontré esto en la documentación de FastAPI indexada, así que no voy a inventar una respuesta.",
+      "tools_used": [],
+      "usage": {
+        "classifier_prompt_tokens": 531,
+        "classifier_completion_tokens": 44,
+        "embedding_tokens": 11,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      "tokens": 586,
+      "cost_usd": 0.00028302000000000004,
+      "latency_ms": 935.9939999994822,
+      "judge_context": null,
+      "context_parts": [],
+      "judge": null,
+      "judge_tokens": 0,
+      "judge_cost_usd": 0.0,
+      "judge_error": null,
+      "error": null
+    },
+    {
+      "id": "h06",
+      "question": "¿Cuántas calorías tiene una porción de arroz con pollo?",
+      "lang": "es",
+      "category": "out_obvious",
+      "expected_route": "no_se",
+      "expected_urls": [],
+      "route": "no_se",
+      "reason": "out_of_domain",
+      "is_fastapi": false,
+      "classifier_reason": "The question is about food calories, unrelated to FastAPI.",
+      "language": "es",
+      "search_query": "How many calories does a serving of arroz con pollo have?",
+      "translated": true,
+      "best_distance": 0.8873,
+      "retrieved_urls": [
+        "https://fastapi.tiangolo.com/tutorial/cookie-params/",
+        "https://fastapi.tiangolo.com/deployment/concepts/#resource-utilization",
+        "https://fastapi.tiangolo.com/how-to/general/",
+        "https://fastapi.tiangolo.com/tutorial/cookie-param-models/#cookies-with-a-pydantic-model",
+        "https://fastapi.tiangolo.com/deployment/server-workers/#multiple-workers"
+      ],
+      "citations": [],
+      "grounded": false,
+      "answer": "No encontré esto en la documentación de FastAPI indexada, así que no voy a inventar una respuesta.",
+      "tools_used": [],
+      "usage": {
+        "classifier_prompt_tokens": 533,
+        "classifier_completion_tokens": 41,
+        "embedding_tokens": 14,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      "tokens": 588,
+      "cost_usd": 0.00027907999999999996,
+      "latency_ms": 840.811100002611,
+      "judge_context": null,
+      "context_parts": [],
+      "judge": null,
+      "judge_tokens": 0,
+      "judge_cost_usd": 0.0,
+      "judge_error": null,
+      "error": null
+    }
+  ],
+  "metrics": {
+    "n": 6,
+    "n_errors": 0,
+    "route_accuracy": {
+      "num": 4,
+      "den": 6
+    },
+    "confusion": {
+      "answer_ok": 2,
+      "false_no_se": 2,
+      "false_answer": 0,
+      "no_se_ok": 2
+    },
+    "source_hit_any": {
+      "num": 2,
+      "den": 2
+    },
+    "source_hit_all_multi": {
+      "num": 0,
+      "den": 0
+    },
+    "grounded_rate": {
+      "num": 2,
+      "den": 2
+    },
+    "faithfulness_mean": 1.0,
+    "faithfulness_n": {
+      "num": 2,
+      "den": 2
+    },
+    "unsupported_any_rate": {
+      "num": 0,
+      "den": 2
+    },
+    "latency_p50_ms": 1549.0113499981817,
+    "latency_p95_ms": 5565.712799987523,
+    "cost_total_usd": 0.0066839,
+    "cost_per_question_usd": 0.0011139833333333334,
+    "judge_cost_usd": 0.0026380000000000006
+  },
+  "sweep": [
+    {
+      "threshold": 0.48,
+      "cut_by_classifier": 2,
+      "cut_by_threshold": 2,
+      "false_no_se_classifier": 0,
+      "false_no_se_threshold": 2,
+      "false_answer": 0,
+      "route_accuracy": {
+        "num": 4,
+        "den": 6
+      }
+    },
+    {
+      "threshold": 0.5,
+      "cut_by_classifier": 2,
+      "cut_by_threshold": 2,
+      "false_no_se_classifier": 0,
+      "false_no_se_threshold": 2,
+      "false_answer": 0,
+      "route_accuracy": {
+        "num": 4,
+        "den": 6
+      }
+    },
+    {
+      "threshold": 0.52,
+      "cut_by_classifier": 2,
+      "cut_by_threshold": 2,
+      "false_no_se_classifier": 0,
+      "false_no_se_threshold": 2,
+      "false_answer": 0,
+      "route_accuracy": {
+        "num": 4,
+        "den": 6
+      }
+    },
+    {
+      "threshold": 0.55,
+      "cut_by_classifier": 2,
+      "cut_by_threshold": 1,
+      "false_no_se_classifier": 0,
+      "false_no_se_threshold": 1,
+      "false_answer": 0,
+      "route_accuracy": {
+        "num": 5,
+        "den": 6
+      }
+    }
+  ]
+}

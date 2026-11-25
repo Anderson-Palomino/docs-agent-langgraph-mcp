@@ -212,3 +212,29 @@ def test_review_settings_error_prints_only_type(review, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "ValidationError" in err
     assert "secreto" not in err
+
+
+# --- holdout en español (spec 5.3) ---
+
+
+def test_holdout_file_is_valid():
+    cases = load_golden(ROOT / "eval" / "holdout_es.json")
+    golden = load_golden(ROOT / "eval" / "golden_set.json")
+    assert [c.id for c in cases] == [f"h0{i}" for i in range(1, 7)]
+    assert all(c.lang == "es" for c in cases)
+    assert sum(c.expected_route == "answer" for c in cases) == 4
+    assert sum(c.expected_route == "no_se" for c in cases) == 2
+    assert any(c.category == "out_near" for c in cases)
+    assert not any(c.judge_review for c in cases)
+    assert not {c.question for c in cases} & {c.question for c in golden}
+
+
+def test_render_review_header_names_source_and_holdout(review, tmp_path):
+    cases = load_golden(_write(tmp_path, _valid_set()))[:1]
+    normal = review.render_review(cases, {URL}, [])
+    assert "# Golden set: tabla de revisión" in normal
+    assert "desde `eval/golden_set.json`" in normal and "Distribución: completa." in normal
+    hold = review.render_review(cases, {URL}, [], ROOT / "eval" / "holdout_es.json", holdout=True)
+    assert "# Holdout en español: tabla de revisión" in hold
+    assert "desde `eval/holdout_es.json`" in hold
+    assert "Distribución: no aplica (holdout)." in hold and "completa" not in hold

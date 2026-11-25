@@ -23,7 +23,9 @@ QUERY = "https://fastapi.tiangolo.com/tutorial/query-params/"
 Q_ANSWER = "How do I declare a request body?"
 Q_OUT = "How do I bake a pizza?"  # el clasificador la corta
 Q_THRESHOLD = "How do I configure Django REST Framework permissions?"  # la corta el umbral
-BEST = {Q_ANSWER: 0.30, Q_OUT: 0.80, Q_THRESHOLD: 0.70}
+Q_FLASK = "Flask blueprint"  # consulta en inglés que el clasificador devuelve para una pregunta en español
+Q_REQ_BODY = "request body"
+BEST = {Q_ANSWER: 0.30, Q_OUT: 0.80, Q_THRESHOLD: 0.70, Q_FLASK: 0.85, Q_REQ_BODY: 0.30}
 SECTION = {"url": BODY, "title": "Request Body", "content": "FULL SECTION TEXT about Pydantic models as body"}
 CHAT_TOKENS = 120  # FakeOpenAI: 100 de entrada + 20 de salida por llamada de chat
 
@@ -103,6 +105,58 @@ def run(ev, db_conn, *, client=None, tools=None, judge=True, max_tokens=400_000)
             judge=judge, max_tokens=max_tokens, console=console,
         )
     )
+
+
+def _run_one(ev, db_conn, case_id, client, tools):
+    import asyncio
+
+    case = next(c for c in golden_cases() if c.id == case_id)
+    console = Console(file=io.StringIO())
+    results, aborted = asyncio.run(
+        ev.run_cases([case], settings(), db_conn, client, tools, judge=False, max_tokens=400_000, console=console)
+    )
+    assert aborted is None
+    return results[0]
+
+
+def test_row_records_language_search_query_and_translated(ev, db_conn):
+    row = _run_one(ev, db_conn, "g01", PerQuestionOpenAI(language="es", search_query=Q_REQ_BODY), QuestionTools())
+    assert (row["language"], row["search_query"], row["translated"]) == ("es", Q_REQ_BODY, True)
+
+
+def test_out_of_domain_extra_search_uses_search_query(ev, db_conn):
+    tools = QuestionTools()
+    row = _run_one(ev, db_conn, "g02", PerQuestionOpenAI(language="es", search_query=Q_FLASK), tools)
+    assert ("search_docs", {"query": Q_FLASK, "k": 5}) in tools.calls
+    assert row["best_distance"] == 0.85 and row["search_query"] == Q_FLASK
+
+
+def test_out_of_domain_extra_search_english_uses_question(ev, db_conn):
+    tools = QuestionTools()
+    row = _run_one(ev, db_conn, "g02", PerQuestionOpenAI(language="en"), tools)
+    assert ("search_docs", {"query": Q_OUT, "k": 5}) in tools.calls
+    assert row["language"] == "en" and row["translated"] is False
+
+
+def _two_case_file(tmp_path: Path) -> Path:
+    """Dos casos válidos: no cumplen la distribución de 30 del golden set."""
+    cases = [
+        {"id": f"h{i:02d}", "question": f"pregunta {i}", "lang": "es", "category": "in_basic",
+         "expected_route": "answer", "expected_urls": [BODY], "notes": "n"}
+        for i in (1, 2)
+    ]
+    path = tmp_path / "holdout.json"
+    path.write_text(json.dumps(cases), encoding="utf-8")
+    return path
+
+
+def test_select_cases_holdout_skips_distribution(ev, tmp_path):
+    from docs_agent.evaluation.golden import GoldenSetError
+
+    path = _two_case_file(tmp_path)
+    assert [c.id for c in ev.select_cases(path, None, holdout=True)] == ["h01", "h02"]
+    with pytest.raises(GoldenSetError, match="distribución"):
+        ev.select_cases(path, None, holdout=False)
 
 
 def test_run_cases_three_cases(ev, db_conn):
@@ -229,7 +283,8 @@ def test_write_outputs_suma_errores_y_comparte_stem(ev, db_conn, tmp_path):
     (tmp_path / "2026-11-18.json").write_text("{}", encoding="utf-8")
     run_info = ev.build_run_info(settings(), date(2026, 11, 18), GOLDEN, None, 400_000, True, aborted, results)
     paths = ev.write_outputs(tmp_path, date(2026, 11, 18), run_info, results, golden_cases())
-    assert [p.name for p in paths] == ["2026-11-18-2.json", "2026-11-18-2.md", "2026-11-18-2-judge-review.md"]
+    assert [p.name for p in paths] == ["2026-11-18-2.json", "2026-11-18-2.md"]
+    assert not list(tmp_path.glob("*judge-review*"))
     data = json.loads(paths[0].read_text(encoding="utf-8"))
     assert set(data) == {"run", "cases", "metrics", "sweep"}
     expected_tokens = sum(r["tokens"] + r["judge_tokens"] for r in results)
@@ -238,7 +293,6 @@ def test_write_outputs_suma_errores_y_comparte_stem(ev, db_conn, tmp_path):
     # El total de todos los casos incluye lo gastado por el caso con error; el de las métricas no.
     assert data["run"]["cost_total_usd_all"] > data["metrics"]["cost_total_usd"]
     assert "3 casos (2 sin error · 1 error)" in paths[1].read_text(encoding="utf-8")
-    assert "## g01" in paths[2].read_text(encoding="utf-8")
 
 
 # --- validación del golden set antes de abrir OpenAI/MCP ---
@@ -284,7 +338,7 @@ def test_exit_code(ev):
 
 
 def test_main_happy_path_escribe_salidas(ev, seeded_corpus, tmp_path, monkeypatch, capsys):
-    """`main` completo con fakes: valida, corre, escribe los 3 archivos e imprime el resumen; salida 0."""
+    """`main` completo con fakes: valida, corre, escribe el json y el md e imprime el resumen; salida 0."""
     from docs_agent import api, config
 
     small = tmp_path / "small.json"
@@ -306,11 +360,11 @@ def test_main_happy_path_escribe_salidas(ev, seeded_corpus, tmp_path, monkeypatc
     monkeypatch.setattr(ev, "_run", fake_run)
     assert ev.main(["--golden", str(small), "--only", "g01,g02,g03"]) == 0
     names = sorted(p.name for p in (tmp_path / "results").iterdir())
-    md_path = next(p for p in (tmp_path / "results").iterdir() if p.suffix == ".md" and "judge-review" not in p.name)
+    md_path = next(p for p in (tmp_path / "results").iterdir() if p.suffix == ".md")
     md = md_path.read_text(encoding="utf-8")
     assert "Solo los casos: g01, g02, g03" in md
     assert "el costo del juez usa las tarifas de `m`" in md
-    assert len(names) == 3 and any(n.endswith("-judge-review.md") for n in names)
+    assert len(names) == 2 and not any("judge-review" in n for n in names)
     out = capsys.readouterr().out
     assert "Exactitud de ruta" in out and "3 casos (3 sin error · 0 errores)" in out
     assert "costo del juez" in out  # chat_model "m" ≠ JUDGE_MODEL: aviso de tarifas
@@ -342,7 +396,7 @@ def test_main_crash_escribe_parciales(ev, seeded_corpus, tmp_path, monkeypatch, 
     assert data["run"]["aborted"] == "crash:RuntimeError"
     assert [c["id"] for c in data["cases"]] == ["g01", "g02"]
     assert data["run"]["tokens_total"] > 0
-    assert len(list((tmp_path / "results").iterdir())) == 3
+    assert len(list((tmp_path / "results").iterdir())) == 2
     out = capsys.readouterr().out
     assert "RuntimeError" in out and "secreto-no-imprimir" not in out
     assert "costo del juez" not in out  # mismo modelo: sin aviso

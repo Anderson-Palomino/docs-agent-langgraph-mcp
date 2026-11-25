@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from docs_agent.ratelimit import SlidingWindowLimiter, client_ip, limit_key, parse_trusted
+from docs_agent.ratelimit import SlidingWindowLimiter, client_ip, limit_key, mask_ip, parse_trusted, resolve_client
 
 
 class FakeClock:
@@ -163,3 +163,57 @@ def test_limiter_is_thread_safe_under_concurrent_hits():
     finally:
         sys.setswitchinterval(previous)
     assert admitted == 3
+
+
+def test_resolve_client_star_takes_rightmost_entry():
+    r = resolve_client("203.0.113.9", "9.9.9.9, 181.65.10.20", parse_trusted("*"))
+    assert (r.ip, r.source, r.xff_index_from_right) == ("181.65.10.20", "xff", 0)
+    assert r.xff_entries == ["9.9.9.9", "181.65.10.20"]
+
+
+def test_resolve_client_untrusted_peer_uses_peer():
+    r = resolve_client("8.8.8.8", "1.2.3.4", parse_trusted("10.0.0.0/8"))
+    assert (r.ip, r.source, r.xff_index_from_right) == ("8.8.8.8", "peer", None)
+
+
+def test_resolve_client_index_counts_skipped_trusted_hops():
+    r = resolve_client("10.0.0.1", "9.9.9.9, 5.6.7.8, 10.0.0.2", parse_trusted("10.0.0.0/8"))
+    assert (r.ip, r.source, r.xff_index_from_right) == ("5.6.7.8", "xff", 1)
+    assert len(r.xff_entries) == 3
+
+
+def test_resolve_client_garbage_entry_matches_client_ip():
+    t = parse_trusted("*")
+    r = resolve_client("10.0.0.1", "1.2.3.4, basura, 5.6.7.8", t)
+    assert r.ip == client_ip("10.0.0.1", "1.2.3.4, basura, 5.6.7.8", t) == "5.6.7.8"
+    assert r.source == "xff" and r.xff_index_from_right == 0
+    r2 = resolve_client("10.0.0.1", "1.2.3.4, basura", t)
+    assert (r2.ip, r2.source, r2.xff_index_from_right) == ("10.0.0.1", "peer", None)
+    assert r2.ip == client_ip("10.0.0.1", "1.2.3.4, basura", t)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("181.65.10.20", "181.65.x.x"),
+        ("2800:200:abcd:1234::1", "2800:200:x:x::/64"),
+        ("2800:200:abcd:1234::/64", "2800:200:x:x::/64"),
+        ("::ffff:181.65.10.20", "181.65.x.x"),
+        ("basura", "<no-ip>"),
+        ("181.65.10.20:5555", "181.65.x.x"),
+        ("[2800:200:abcd:1234::1]:443", "2800:200:x:x::/64"),
+    ],
+)
+def test_mask_ip(value, expected):
+    assert mask_ip(value) == expected
+
+
+def test_key_id_stable_distinct_and_not_the_ip():
+    from docs_agent.ratelimit import key_id
+
+    a, b = key_id("181.65.10.20"), key_id("181.65.77.88")  # mismo /16, claves distintas
+    assert a == key_id("181.65.10.20")
+    assert a != b
+    assert len(a) == 8 and all(ch in "0123456789abcdef" for ch in a)
+    for ip in ("181.65.10.20", "2001:db8:1:2::/64"):
+        assert ip != key_id(ip) and ip not in key_id(ip)

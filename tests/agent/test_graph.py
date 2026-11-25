@@ -332,3 +332,57 @@ async def test_spent_chat_tokens_accumulate_outside_state_even_on_failure():
     with pytest.raises(Exception):
         await graph.ainvoke({"question": "q"})
     assert deps.spent == {"chat_tokens": 0}  # la llamada que falló no cuenta
+
+
+def search_queries(tools: FakeTools) -> list[str]:
+    return [args["query"] for tool, args in tools.calls if tool == "search_docs"]
+
+
+SPANISH = "¿Cómo devuelvo el código de estado 201?"
+TRANSLATION = "How do I return status code 201?"
+
+
+@pytest.mark.anyio
+async def test_spanish_question_searches_with_translation_and_answers_with_original():
+    graph, deps = make(openai=FakeOpenAI(language="es", search_query=TRANSLATION))
+    out = await graph.ainvoke({"question": SPANISH})
+    assert search_queries(deps.tools) == [TRANSLATION]
+    answer_call = chat_calls(deps.openai)[-1]
+    user_messages = [m["content"] for m in answer_call["messages"] if m["role"] == "user"]
+    assert SPANISH in user_messages[-1] and TRANSLATION not in user_messages[-1]
+    assert out["search_query"] == TRANSLATION and out["translated"] is True
+    assert out["language"] == "es" and out["route"] == "answer"
+
+
+@pytest.mark.anyio
+async def test_english_question_searches_with_original():
+    graph, deps = make(openai=FakeOpenAI(language="en", search_query=None))
+    out = await graph.ainvoke({"question": "How do I return status code 201?"})
+    assert search_queries(deps.tools) == ["How do I return status code 201?"]
+    assert out["search_query"] == "How do I return status code 201?" and out["translated"] is False
+
+
+@pytest.mark.anyio
+async def test_english_with_translation_is_ignored():
+    graph, deps = make(openai=FakeOpenAI(language="en", search_query="algo"))
+    out = await graph.ainvoke({"question": "How do I declare a request body?"})
+    assert search_queries(deps.tools) == ["How do I declare a request body?"]
+    assert out["translated"] is False
+
+
+@pytest.mark.anyio
+async def test_empty_translation_falls_back_to_original():
+    graph, deps = make(openai=FakeOpenAI(language="es", search_query="  "))
+    out = await graph.ainvoke({"question": SPANISH})
+    assert search_queries(deps.tools) == [SPANISH]
+    assert out["search_query"] == SPANISH and out["translated"] is False
+    assert out["route"] == "answer"
+
+
+@pytest.mark.anyio
+async def test_out_of_domain_does_not_search_even_with_translation():
+    graph, deps = make(openai=FakeOpenAI(is_fastapi=False, language="es", search_query="x"))
+    out = await graph.ainvoke({"question": "¿Cómo hago una vista en Django?"})
+    assert deps.tools.calls == []
+    assert out["route"] == "no_se" and out["reason"] == "out_of_domain"
+    assert "search_query" in out and "translated" in out

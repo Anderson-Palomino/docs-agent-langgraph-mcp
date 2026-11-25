@@ -43,15 +43,28 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-def render_review(cases: list[GoldenCase], known_urls: set[str], problems: list[str]) -> str:
-    """Markdown de la tabla de revisión; la última columna queda vacía para el dueño."""
+def _display_path(path: Path) -> str:
+    try:
+        return Path(path).resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return Path(path).as_posix()
+
+
+def render_review(
+    cases: list[GoldenCase], known_urls: set[str], problems: list[str], source: Path = DEFAULT_GOLDEN, holdout: bool = False
+) -> str:
+    """Markdown de la tabla de revisión; la última columna queda vacía para el dueño.
+
+    El encabezado nombra el archivo real (`source`); con `holdout` no se chequea la distribución y lo dice."""
+    title = "Holdout en español: tabla de revisión" if holdout else "Golden set: tabla de revisión"
+    distribution = "no aplica (holdout)" if holdout else ("completa" if not problems else "; ".join(problems))
     lines = [
-        "# Golden set: tabla de revisión",
+        f"# {title}",
         "",
-        "Generado por `scripts/golden_review.py` desde `eval/golden_set.json`; no editar a mano.",
+        f"Generado por `scripts/golden_review.py` desde `{_display_path(source)}`; no editar a mano.",
         "Escribe tus comentarios en la última columna (o aparte, citando el id).",
         "",
-        f"Casos: {len(cases)}. Distribución: {'completa' if not problems else '; '.join(problems)}.",
+        f"Casos: {len(cases)}. Distribución: {distribution}.",
         "",
         "| " + " | ".join(COLUMNS) + " |",
         "|" + "---|" * len(COLUMNS),
@@ -76,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--golden", type=Path, default=DEFAULT_GOLDEN)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--holdout", action="store_true", help="set de holdout: sin chequeo de distribución")
     args = parser.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # ✓/✗ en consolas Windows que no son UTF-8
         if hasattr(stream, "reconfigure") and (stream.encoding or "").lower() != "utf-8":
@@ -95,10 +109,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no se pudo leer sections de la base local: {type(exc).__name__}", file=sys.stderr)
         return EXIT_FAILED
 
-    problems = check_distribution(cases)
+    problems = [] if args.holdout else check_distribution(cases)
     missing = [(c.id, u) for c in cases for u in c.expected_urls if not url_exists(u, known)]
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(render_review(cases, known, problems), encoding="utf-8")
+    args.out.write_text(render_review(cases, known, problems, args.golden, args.holdout), encoding="utf-8")
 
     for case_id, url in missing:
         print(f"✗ {case_id}: {url} no está en sections", file=sys.stderr)

@@ -22,7 +22,7 @@ from docs_agent.config import get_settings
 from docs_agent.db import connect
 from docs_agent.rag.answer import Citation
 from docs_agent.rag.retrieve import corpus_size
-from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, client_ip, limit_key, parse_trusted
+from docs_agent.ratelimit import SlidingWindowLimiter, TrustedProxies, key_id, limit_key, mask_ip, parse_trusted, resolve_client
 from docs_agent.tracing import configure_tracing, load_openai_wrapper
 
 logger = logging.getLogger(__name__)
@@ -100,9 +100,23 @@ def enforce_rate_limit(request: Request) -> None:
     excede el límite recibe 429 sin abrir conexión a Postgres ni depender de que la base esté arriba."""
     limiter, trusted = rate_limit_state(request.app, get_settings())
     peer = request.client.host if request.client else None
-    ip = client_ip(peer, ",".join(request.headers.getlist("x-forwarded-for")), trusted)
-    retry_after = limiter.hit(limit_key(ip))
+    resolved = resolve_client(peer, ",".join(request.headers.getlist("x-forwarded-for")), trusted)
+    key = limit_key(resolved.ip)
+    retry_after = limiter.hit(key)
     if retry_after is not None:
+        # Diagnóstico de D37: qué clave se usó y de dónde salió, siempre enmascarada (nunca una IP completa).
+        # `key_id` permite comparar claves sin la ambigüedad del /16; solo se enmascaran las últimas 5 entradas.
+        entries = resolved.xff_entries
+        shown = ", ".join(mask_ip(e) for e in entries[-5:])
+        logger.warning(
+            "rate limit 429: key=%s key_id=%s source=%s index_from_right=%s entries=%d xff=[%s]",
+            mask_ip(key),
+            key_id(key),
+            resolved.source,
+            resolved.xff_index_from_right,
+            len(entries),
+            ("…, " if len(entries) > 5 else "") + shown,
+        )
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded",
