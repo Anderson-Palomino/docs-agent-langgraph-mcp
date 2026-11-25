@@ -268,7 +268,7 @@ What the metrics mean, and what they do not measure:
 
 - **Route accuracy**: whether the graph answered or said "no sé" as the golden case expects. It says nothing about the quality of the answer.
 - **Source hit / grounded**: the cited URLs (normalized) match `expected_urls`, and the citations come from what was retrieved. A right URL does not mean the text says what the answer claims.
-- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. **The manual review of the judge is still pending** (the owner has not filled `eval/results/2026-11-25-judge-review.md` yet), so there is no agreement figure: a high score means the judge found few unsupported claims (golden set after: 1 of 20 answers, mean 0.99), not verified faithfulness.
+- **Faithfulness**: an LLM judge lists each claim of the answer and checks it against the exact context the answering model saw (D38). It measures support in the context, not truth: an answer faithful to a wrong passage scores high. The judge is the same model as the answerer and may share its blind spots. **A manual review agreed with the judge on 56 of 56 claims (9 of 9 cases)** (`eval/results/2026-11-25-judge-review.md`, D38). The review also found the judge is strict with commands but lenient with rewritten code: it flags a shell command missing from the context, yet accepts code examples the model rewrote. So the mean of 0.99 (golden set after: 1 of 20 answers with an unsupported claim) means support in the context, not correct code.
 - Every figure comes from a single run.
 
 ## Limitations
@@ -279,7 +279,7 @@ What the metrics mean, and what they do not measure:
 - **The classifier, not the threshold, is the defense for other-framework questions.** Translation adds "in FastAPI" to many queries, which pulls them closer to the corpus; g25 (pure Starlette, in Spanish) is already below 0.52 and would be answered if the classifier let it through.
 - **The threshold stays at 0.52** (D41). Tuning it on the holdout would contaminate it; recalibration is planned for Week 5 with a new, unseen holdout.
 - **The rate limiter is per instance and in memory**: it resets on deploy and, with several workers, the effective limit is limit x workers (D37).
-- **Faithfulness is judged by the same model that answers**, and its manual review is pending (see above).
+- **Faithfulness is judged by the same model that answers**, and it does not check code the model rewrote (see above).
 
 ## Tests
 

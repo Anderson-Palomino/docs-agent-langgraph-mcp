@@ -51,14 +51,14 @@ Puedes ver el ejemplo completo en: https://fastapi.tiangolo.com/tutorial/securit
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | Para proteger un endpoint con OAuth2 en FastAPI y obtener el usuario actual, puedes usar dependencias que validen el token y obtengan el usuario autenticado. | apoyada | | |
-| 2 | En la sección "Simple OAuth2 with Password and Bearer > Update the dependencies" se muestra un ejemplo completo donde se define una dependencia `get_current_user` que decodifica el token y obtiene el usuario, y otra dependencia `get_current_active_user` que verifica que el usuario esté activo. | apoyada | | |
-| 3 | Luego, en el endpoint, se usa `Depends(get_current_active_user)` para protegerlo y obtener el usuario actual. | apoyada | | |
-| 4 | El código `async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]): ...` está en el contexto en la sección mencionada. | apoyada | | |
-| 5 | El código `async def get_current_active_user(current_user: Annotated[User, Depends(get_current_user)],): ...` está en el contexto en la sección mencionada. | apoyada | | |
-| 6 | El endpoint protegido `/users/me` con `Depends(get_current_active_user)` está en el contexto en la sección mencionada. | apoyada | | |
-| 7 | Esto protege el endpoint `/users/me` para que solo usuarios autenticados y activos puedan acceder y obtener su información. | apoyada | | |
-| 8 | Puedes ver el ejemplo completo en: https://fastapi.tiangolo.com/tutorial/security/simple-oauth2/#update-the-dependencies | apoyada | | |
+| 1 | Para proteger un endpoint con OAuth2 en FastAPI y obtener el usuario actual, puedes usar dependencias que validen el token y obtengan el usuario autenticado. | apoyada | sí | |
+| 2 | En la sección "Simple OAuth2 with Password and Bearer > Update the dependencies" se muestra un ejemplo completo donde se define una dependencia `get_current_user` que decodifica el token y obtiene el usuario, y otra dependencia `get_current_active_user` que verifica que el usuario esté activo. | apoyada | sí | |
+| 3 | Luego, en el endpoint, se usa `Depends(get_current_active_user)` para protegerlo y obtener el usuario actual. | apoyada | sí | |
+| 4 | El código `async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]): ...` está en el contexto en la sección mencionada. | apoyada | sí | |
+| 5 | El código `async def get_current_active_user(current_user: Annotated[User, Depends(get_current_user)],): ...` está en el contexto en la sección mencionada. | apoyada | sí | |
+| 6 | El endpoint protegido `/users/me` con `Depends(get_current_active_user)` está en el contexto en la sección mencionada. | apoyada | sí | |
+| 7 | Esto protege el endpoint `/users/me` para que solo usuarios autenticados y activos puedan acceder y obtener su información. | apoyada | sí | |
+| 8 | Puedes ver el ejemplo completo en: https://fastapi.tiangolo.com/tutorial/security/simple-oauth2/#update-the-dependencies | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -588,11 +588,11 @@ En este caso, `item_id` es declarado como un entero (`int`), y FastAPI validará
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | Para declarar un parámetro de ruta con tipo int y que FastAPI lo valide automáticamente, debes usar anotaciones de tipo estándar de Python en la función que maneja la ruta. | apoyada | | |
-| 2 | Debes usar anotaciones de tipo estándar de Python en la función que maneja la ruta. | apoyada | | |
-| 3 | Ejemplo de código con FastAPI que declara un parámetro de ruta item_id como int: from fastapi import FastAPI app = FastAPI() @app.get("/items/{item_id}") async def read_item(item_id: int): return {"item_id": item_id} | apoyada | | |
-| 4 | En este caso, item_id es declarado como un entero (int). | apoyada | | |
-| 5 | FastAPI validará automáticamente que el valor recibido en la ruta sea un entero. | apoyada | | |
+| 1 | Para declarar un parámetro de ruta con tipo int y que FastAPI lo valide automáticamente, debes usar anotaciones de tipo estándar de Python en la función que maneja la ruta. | apoyada | sí | |
+| 2 | Debes usar anotaciones de tipo estándar de Python en la función que maneja la ruta. | apoyada | sí | repite la afirmación #1 |
+| 3 | Ejemplo de código con FastAPI que declara un parámetro de ruta item_id como int: from fastapi import FastAPI app = FastAPI() @app.get("/items/{item_id}") async def read_item(item_id: int): return {"item_id": item_id} | apoyada | sí | |
+| 4 | En este caso, item_id es declarado como un entero (int). | apoyada | sí | |
+| 5 | FastAPI validará automáticamente que el valor recibido en la ruta sea un entero. | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -912,15 +912,15 @@ In this example, the `item` parameter is a Pydantic model and will be taken from
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | To declare a request body using a Pydantic model in FastAPI, you define a Pydantic model class with the fields you expect in the request body | apoyada | | |
-| 2 | Then use that model as a parameter in your path operation function | apoyada | | |
-| 3 | FastAPI will automatically recognize that the parameter should be taken from the request body | apoyada | | |
-| 4 | Example code defining Item model with fields name, description, price, tax | apoyada | | |
-| 5 | Example code shows app.put decorator with path /items/{item_id} | apoyada | | |
-| 6 | Example code shows async def update_item(item_id: int, item: Item) function | apoyada | | |
-| 7 | Function returns dictionary with item_id and item.model_dump() | apoyada | | |
-| 8 | In this example, the item parameter is a Pydantic model and will be taken from the request body | apoyada | | |
-| 9 | item_id is a path parameter taken from the URL path | apoyada | | |
+| 1 | To declare a request body using a Pydantic model in FastAPI, you define a Pydantic model class with the fields you expect in the request body | apoyada | sí | |
+| 2 | Then use that model as a parameter in your path operation function | apoyada | sí | |
+| 3 | FastAPI will automatically recognize that the parameter should be taken from the request body | apoyada | sí | |
+| 4 | Example code defining Item model with fields name, description, price, tax | apoyada | sí | |
+| 5 | Example code shows app.put decorator with path /items/{item_id} | apoyada | sí | |
+| 6 | Example code shows async def update_item(item_id: int, item: Item) function | apoyada | sí | |
+| 7 | Function returns dictionary with item_id and item.model_dump() | apoyada | sí | |
+| 8 | In this example, the item parameter is a Pydantic model and will be taken from the request body | apoyada | sí | |
+| 9 | item_id is a path parameter taken from the URL path | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -1180,16 +1180,16 @@ This approach is recommended because it keeps startup and shutdown logic togethe
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | You can run code at startup and shutdown by defining a lifespan function using the `lifespan` parameter of the `FastAPI` app. | apoyada | | |
-| 2 | This function should be an async context manager that uses `yield` to separate startup and shutdown logic. | apoyada | | |
-| 3 | Code before the `yield` runs once before the application starts receiving requests (startup). | apoyada | | |
-| 4 | Code after the `yield` runs once after the application finishes handling requests (shutdown). | apoyada | | |
-| 5 | For example, you can load resources like machine learning models before `yield` and clean them up after `yield`. | apoyada | | |
-| 6 | The example code imports `asynccontextmanager` from `contextlib` and `FastAPI` from `fastapi`. | apoyada | | |
-| 7 | The example code defines `ml_models` as an empty dictionary. | apoyada | | |
-| 8 | The example defines an async context manager function `lifespan` that loads a lambda function into `ml_models` before `yield` and clears `ml_models` after `yield`. | apoyada | | |
-| 9 | The example creates a `FastAPI` app with `lifespan=lifespan`. | apoyada | | |
-| 10 | This approach is recommended because it keeps startup and shutdown logic together and allows sharing variables easily. | apoyada | | |
+| 1 | You can run code at startup and shutdown by defining a lifespan function using the `lifespan` parameter of the `FastAPI` app. | apoyada | sí | |
+| 2 | This function should be an async context manager that uses `yield` to separate startup and shutdown logic. | apoyada | sí | |
+| 3 | Code before the `yield` runs once before the application starts receiving requests (startup). | apoyada | sí | |
+| 4 | Code after the `yield` runs once after the application finishes handling requests (shutdown). | apoyada | sí | |
+| 5 | For example, you can load resources like machine learning models before `yield` and clean them up after `yield`. | apoyada | sí | |
+| 6 | The example code imports `asynccontextmanager` from `contextlib` and `FastAPI` from `fastapi`. | apoyada | sí | |
+| 7 | The example code defines `ml_models` as an empty dictionary. | apoyada | sí | |
+| 8 | The example defines an async context manager function `lifespan` that loads a lambda function into `ml_models` before `yield` and clears `ml_models` after `yield`. | apoyada | sí | código reescrito (lambda en vez de fake_answer_to_everything_ml_model), equivalente pero no está en el contexto; el juez no lo distingue |
+| 9 | The example creates a `FastAPI` app with `lifespan=lifespan`. | apoyada | sí | |
+| 10 | This approach is recommended because it keeps startup and shutdown logic together and allows sharing variables easily. | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -1449,12 +1449,12 @@ This way, FastAPI will include both the custom header and the cookie in the fina
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | You can add a custom header and set a cookie on the same response by declaring a parameter of type `Response` in your path operation function. | apoyada | | |
-| 2 | Then, set the custom header directly on the `response.headers` dictionary. | apoyada | | |
-| 3 | Set the cookie using the `response.set_cookie()` method. | apoyada | | |
-| 4 | Return the response content as usual. | apoyada | | |
-| 5 | Example code with FastAPI importing Response, defining app, and a path operation function that sets a custom header and a cookie on the response and returns a dict. | apoyada | | |
-| 6 | FastAPI will include both the custom header and the cookie in the final response along with the returned content. | apoyada | | |
+| 1 | You can add a custom header and set a cookie on the same response by declaring a parameter of type `Response` in your path operation function. | apoyada | sí | |
+| 2 | Then, set the custom header directly on the `response.headers` dictionary. | apoyada | sí | |
+| 3 | Set the cookie using the `response.set_cookie()` method. | apoyada | sí | |
+| 4 | Return the response content as usual. | apoyada | sí | |
+| 5 | Example code with FastAPI importing Response, defining app, and a path operation function that sets a custom header and a cookie on the response and returns a dict. | apoyada | sí | |
+| 6 | FastAPI will include both the custom header and the cookie in the final response along with the returned content. | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -1707,9 +1707,9 @@ No se proporciona información específica sobre los cambios incompatibles que t
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | No se proporciona información específica sobre los cambios incompatibles que trae FastAPI 1.0 ni la fecha de su publicación en los fragmentos de contexto proporcionados. | apoyada | | |
-| 2 | Solo se menciona que las versiones actuales están por debajo de 1.0.0 y que cualquier versión menor a 1.0.0 podría tener cambios incompatibles, siguiendo las convenciones de Semantic Versioning. | apoyada | | |
-| 3 | No se detalla qué cambios específicos ocurrirán en la versión 1.0 ni cuándo será lanzada. | apoyada | | |
+| 1 | No se proporciona información específica sobre los cambios incompatibles que trae FastAPI 1.0 ni la fecha de su publicación en los fragmentos de contexto proporcionados. | apoyada | sí | respondió por la ruta answer sin citas |
+| 2 | Solo se menciona que las versiones actuales están por debajo de 1.0.0 y que cualquier versión menor a 1.0.0 podría tener cambios incompatibles, siguiendo las convenciones de Semantic Versioning. | apoyada | sí | |
+| 3 | No se detalla qué cambios específicos ocurrirán en la versión 1.0 ni cuándo será lanzada. | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -1953,10 +1953,10 @@ Esto hará que el endpoint devuelva el código 201 en la respuesta.
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | Para que un endpoint de creación devuelva el código de estado 201 en lugar de 200, debes usar el parámetro `status_code` en el decorador del path operation, por ejemplo `@app.post("/items/", status_code=201)`. | apoyada | | |
-| 2 | Esto hará que la respuesta tenga el código 201 y también se documente así en el esquema OpenAPI. | apoyada | | |
-| 3 | Puedes usar la constante `status.HTTP_201_CREATED` importándola desde `fastapi.status` para mayor claridad. | apoyada | | |
-| 4 | Ejemplo de código con `status.HTTP_201_CREATED` en el decorador `@app.post` para que el endpoint devuelva el código 201. | apoyada | | |
+| 1 | Para que un endpoint de creación devuelva el código de estado 201 en lugar de 200, debes usar el parámetro `status_code` en el decorador del path operation, por ejemplo `@app.post("/items/", status_code=201)`. | apoyada | sí | |
+| 2 | Esto hará que la respuesta tenga el código 201 y también se documente así en el esquema OpenAPI. | apoyada | sí | |
+| 3 | Puedes usar la constante `status.HTTP_201_CREATED` importándola desde `fastapi.status` para mayor claridad. | apoyada | sí | |
+| 4 | Ejemplo de código con `status.HTTP_201_CREATED` en el decorador `@app.post` para que el endpoint devuelva el código 201. | apoyada | sí | usa Item sin definirlo; la doc usa name: str |
 
 ### Contexto que vio el modelo
 
@@ -2327,12 +2327,12 @@ Ten en cuenta que no puedes declarar parámetros `Form` y también parámetros `
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | Para recibir campos de un formulario HTML en lugar de JSON en FastAPI, debes usar el tipo `Form` para declarar los campos que esperas recibir. | apoyada | | |
-| 2 | FastAPI se encargará de leer los datos del formulario desde el lugar correcto, que normalmente está codificado con el tipo de medio `application/x-www-form-urlencoded` para formularios sin archivos, o `multipart/form-data` si el formulario incluye archivos. | apoyada | | |
-| 3 | Para usar formularios, primero debes instalar la librería `python-multipart` en tu proyecto. | apoyada | | |
-| 4 | Puedes instalarla con el comando `uv add python-multipart`. | no apoyada | | |
-| 5 | No puedes declarar parámetros `Form` y también parámetros `Body` que esperas recibir como JSON en la misma operación, ya que el cuerpo de la solicitud estará codificado como formulario y no como JSON. | apoyada | | |
-| 6 | Esta es una limitación del protocolo HTTP, no de FastAPI. | apoyada | | |
+| 1 | Para recibir campos de un formulario HTML en lugar de JSON en FastAPI, debes usar el tipo `Form` para declarar los campos que esperas recibir. | apoyada | sí | |
+| 2 | FastAPI se encargará de leer los datos del formulario desde el lugar correcto, que normalmente está codificado con el tipo de medio `application/x-www-form-urlencoded` para formularios sin archivos, o `multipart/form-data` si el formulario incluye archivos. | apoyada | sí | |
+| 3 | Para usar formularios, primero debes instalar la librería `python-multipart` en tu proyecto. | apoyada | sí | |
+| 4 | Puedes instalarla con el comando `uv add python-multipart`. | no apoyada | sí | verificado: `uv add` no está en el contexto |
+| 5 | No puedes declarar parámetros `Form` y también parámetros `Body` que esperas recibir como JSON en la misma operación, ya que el cuerpo de la solicitud estará codificado como formulario y no como JSON. | apoyada | sí | |
+| 6 | Esta es una limitación del protocolo HTTP, no de FastAPI. | apoyada | sí | |
 
 ### Contexto que vio el modelo
 
@@ -2609,11 +2609,11 @@ Este middleware ejecuta código antes y después de la petición, midiendo el ti
 
 | # | Afirmación | Juez | ¿De acuerdo? (sí/no) | Nota |
 |---|---|---|---|---|
-| 1 | Para crear un middleware en FastAPI que mida el tiempo que tarda cada petición y agregue ese tiempo en una cabecera, puedes usar el decorador `@app.middleware("http")` sobre una función asíncrona que reciba el objeto `request` y una función `call_next`. | apoyada | | |
-| 2 | Dentro de esta función, mides el tiempo antes y después de llamar a `call_next(request)`, que procesa la petición y genera la respuesta. | apoyada | | |
-| 3 | Luego, agregas el tiempo calculado en segundos como un valor en la cabecera `X-Process-Time` de la respuesta y la retornas. | apoyada | | |
-| 4 | Aquí un ejemplo de código: ```python import time from fastapi import FastAPI, Request app = FastAPI() @app.middleware("http") async def add_process_time_header(request: Request, call_next): start_time = time.perf_counter() response = await call_next(request) process_time = time.perf_counter() - start_time response.headers["X-Process-Time"] = str(process_time) return response ``` | apoyada | | |
-| 5 | Este middleware ejecuta código antes y después de la petición, midiendo el tiempo total y agregándolo en la cabecera de la respuesta para que el cliente pueda conocerlo. | apoyada | | |
+| 1 | Para crear un middleware en FastAPI que mida el tiempo que tarda cada petición y agregue ese tiempo en una cabecera, puedes usar el decorador `@app.middleware("http")` sobre una función asíncrona que reciba el objeto `request` y una función `call_next`. | apoyada | sí | |
+| 2 | Dentro de esta función, mides el tiempo antes y después de llamar a `call_next(request)`, que procesa la petición y genera la respuesta. | apoyada | sí | |
+| 3 | Luego, agregas el tiempo calculado en segundos como un valor en la cabecera `X-Process-Time` de la respuesta y la retornas. | apoyada | sí | |
+| 4 | Aquí un ejemplo de código: ```python import time from fastapi import FastAPI, Request app = FastAPI() @app.middleware("http") async def add_process_time_header(request: Request, call_next): start_time = time.perf_counter() response = await call_next(request) process_time = time.perf_counter() - start_time response.headers["X-Process-Time"] = str(process_time) return response ``` | apoyada | sí | |
+| 5 | Este middleware ejecuta código antes y después de la petición, midiendo el tiempo total y agregándolo en la cabecera de la respuesta para que el cliente pueda conocerlo. | apoyada | sí | |
 
 ### Contexto que vio el modelo
 

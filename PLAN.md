@@ -65,12 +65,12 @@ Hecho cuando: el README tiene la tabla de resultados y un link de demo en vivo.
 - [x] S3: golden set de 30 preguntas y tabla de resultados
 - [x] S3: demo desplegada
 - [ ] S3: trazas en la demo (código listo, D34; LangSmith no configurado en Render)
-- [x] S4: preguntas en español con traducción en el clasificador, medidas con un holdout (D40, D41); aún no desplegado: se despliega al mergear el PR
+- [x] S4: preguntas en español con traducción en el clasificador, medidas con un holdout (D40, D41); desplegado el 2026-11-25 (PR #6)
 - [x] S4: README final en inglés con tabla de evaluación (holdout aparte del golden set) y limitaciones
 - [x] S4: guion del video de 2 minutos (`docs/demo-script.md`)
-- [ ] S4: revisión manual de los casos del juez (hoja `eval/results/2026-11-25-judge-review.md` sin llenar; coincidencia en D38)
+- [x] S4: revisión manual de los casos del juez (`eval/results/2026-11-25-judge-review.md`: 56/56 afirmaciones y 9/9 casos coinciden; D38)
 - [ ] S4: grabar el video de 2 minutos
-- [ ] S4: PR de la S4 abierto, revisado y mergeado por el dueño (mergear = desplegar en Render)
-- [ ] S4: verificación externa de la demo en vivo tras el deploy (`/health`, pregunta en español y en inglés con citas, una fuera del corpus con "no sé")
+- [x] S4: PR #6 abierto, revisado y mergeado por el dueño (2026-11-25, `ca23d0d`; mergear = desplegar en Render)
+- [x] S4: verificación externa de la demo en vivo tras el deploy (`/health`, pregunta en español y en inglés con citas, una fuera del corpus con "no sé"; `docs/deploy.md`)
 - [ ] S4: prueba del 429 por el dueño y conclusión de D37 (clave del rate limiter en Render)
 - [ ] S5 (pendiente): recalibrar el umbral con un holdout nuevo y estudiar el fallo de recuperación de h04 (D41)
