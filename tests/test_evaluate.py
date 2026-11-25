@@ -283,7 +283,8 @@ def test_write_outputs_suma_errores_y_comparte_stem(ev, db_conn, tmp_path):
     (tmp_path / "2026-11-18.json").write_text("{}", encoding="utf-8")
     run_info = ev.build_run_info(settings(), date(2026, 11, 18), GOLDEN, None, 400_000, True, aborted, results)
     paths = ev.write_outputs(tmp_path, date(2026, 11, 18), run_info, results, golden_cases())
-    assert [p.name for p in paths] == ["2026-11-18-2.json", "2026-11-18-2.md", "2026-11-18-2-judge-review.md"]
+    assert [p.name for p in paths] == ["2026-11-18-2.json", "2026-11-18-2.md"]
+    assert not list(tmp_path.glob("*judge-review*"))
     data = json.loads(paths[0].read_text(encoding="utf-8"))
     assert set(data) == {"run", "cases", "metrics", "sweep"}
     expected_tokens = sum(r["tokens"] + r["judge_tokens"] for r in results)
@@ -292,7 +293,6 @@ def test_write_outputs_suma_errores_y_comparte_stem(ev, db_conn, tmp_path):
     # El total de todos los casos incluye lo gastado por el caso con error; el de las métricas no.
     assert data["run"]["cost_total_usd_all"] > data["metrics"]["cost_total_usd"]
     assert "3 casos (2 sin error · 1 error)" in paths[1].read_text(encoding="utf-8")
-    assert "## g01" in paths[2].read_text(encoding="utf-8")
 
 
 # --- validación del golden set antes de abrir OpenAI/MCP ---
@@ -338,7 +338,7 @@ def test_exit_code(ev):
 
 
 def test_main_happy_path_escribe_salidas(ev, seeded_corpus, tmp_path, monkeypatch, capsys):
-    """`main` completo con fakes: valida, corre, escribe los 3 archivos e imprime el resumen; salida 0."""
+    """`main` completo con fakes: valida, corre, escribe el json y el md e imprime el resumen; salida 0."""
     from docs_agent import api, config
 
     small = tmp_path / "small.json"
@@ -360,11 +360,11 @@ def test_main_happy_path_escribe_salidas(ev, seeded_corpus, tmp_path, monkeypatc
     monkeypatch.setattr(ev, "_run", fake_run)
     assert ev.main(["--golden", str(small), "--only", "g01,g02,g03"]) == 0
     names = sorted(p.name for p in (tmp_path / "results").iterdir())
-    md_path = next(p for p in (tmp_path / "results").iterdir() if p.suffix == ".md" and "judge-review" not in p.name)
+    md_path = next(p for p in (tmp_path / "results").iterdir() if p.suffix == ".md")
     md = md_path.read_text(encoding="utf-8")
     assert "Solo los casos: g01, g02, g03" in md
     assert "el costo del juez usa las tarifas de `m`" in md
-    assert len(names) == 3 and any(n.endswith("-judge-review.md") for n in names)
+    assert len(names) == 2 and not any("judge-review" in n for n in names)
     out = capsys.readouterr().out
     assert "Exactitud de ruta" in out and "3 casos (3 sin error · 0 errores)" in out
     assert "costo del juez" in out  # chat_model "m" ≠ JUDGE_MODEL: aviso de tarifas
@@ -396,7 +396,7 @@ def test_main_crash_escribe_parciales(ev, seeded_corpus, tmp_path, monkeypatch, 
     assert data["run"]["aborted"] == "crash:RuntimeError"
     assert [c["id"] for c in data["cases"]] == ["g01", "g02"]
     assert data["run"]["tokens_total"] > 0
-    assert len(list((tmp_path / "results").iterdir())) == 3
+    assert len(list((tmp_path / "results").iterdir())) == 2
     out = capsys.readouterr().out
     assert "RuntimeError" in out and "secreto-no-imprimir" not in out
     assert "costo del juez" not in out  # mismo modelo: sin aviso

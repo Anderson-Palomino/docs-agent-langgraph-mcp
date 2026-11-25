@@ -293,22 +293,20 @@ def build_run_info(settings, day: date, golden_path: Path, only, max_tokens: int
 def write_outputs(
     directory: Path, day: date, run: dict, results: list[dict], golden: list, label: str | None = None
 ) -> list[Path]:
-    """Escribe `<stem>.json`, `<stem>.md` y `<stem>-judge-review.md` (mismo stem, sin pisar); devuelve las rutas."""
+    """Escribe `<stem>.json` y `<stem>.md` (mismo stem, sin pisar); devuelve las rutas."""
     from docs_agent.evaluation.metrics import compute_metrics, threshold_sweep
-    from docs_agent.evaluation.report import render_judge_review, render_markdown, results_path
+    from docs_agent.evaluation.report import render_markdown, results_path
 
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     json_path = results_path(directory, day, label=label)
     md_path = json_path.with_suffix(".md")
-    review_path = json_path.with_name(f"{json_path.stem}-judge-review.md")
     metrics = compute_metrics(results)
     sweep = threshold_sweep(results)
     payload = {"run": run, "cases": results, "metrics": metrics, "sweep": sweep}
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     md_path.write_text(render_markdown(run, metrics, sweep), encoding="utf-8")
-    review_path.write_text(render_judge_review(results, golden), encoding="utf-8")
-    return [json_path, md_path, review_path]
+    return [json_path, md_path]
 
 
 def summary_table(run: dict, results: list[dict]) -> Table:
