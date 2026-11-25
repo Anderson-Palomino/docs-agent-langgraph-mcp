@@ -370,6 +370,28 @@ def test_ask_rate_limit_xff_ignored_without_trusted_proxy(make_client):
     assert c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 429
 
 
+def test_ask_rate_limit_429_logs_masked_key(make_client, caplog):
+    import logging
+
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*")
+    c = _peer_client("10.0.0.1")
+    h = {"X-Forwarded-For": "9.9.9.9, 181.65.10.20"}
+    with caplog.at_level(logging.WARNING, logger="docs_agent.api"):
+        r1 = c.post("/ask", json={"question": "x"}, headers=h)
+        assert not [x for x in caplog.records if "rate limit 429" in x.getMessage()]
+        r2 = c.post("/ask", json={"question": "x"}, headers=h)
+    assert r1.status_code == 503 and r2.status_code == 429
+    assert r2.json() == {"detail": "Rate limit exceeded"} and "retry-after" in r2.headers
+    recs = [x for x in caplog.records if x.name == "docs_agent.api" and "rate limit 429" in x.getMessage()]
+    assert len(recs) == 1 and recs[0].levelno == logging.WARNING
+    msg = recs[0].getMessage()
+    for part in ("key=181.65.x.x", "source=xff", "index_from_right=0", "entries=2", "9.9.x.x", "181.65.x.x"):
+        assert part in msg
+    assert "181.65.10.20" not in msg and "9.9.9.9" not in msg
+
+
 def test_health_never_rate_limited(make_client):
     from tests.fakes import FakeOpenAI
 

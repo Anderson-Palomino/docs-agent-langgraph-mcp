@@ -17,6 +17,7 @@ import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -77,25 +78,65 @@ def limit_key(ip: str) -> str:
     return str(parsed) if parsed is not None else ip
 
 
-def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> str:
+@dataclass(frozen=True)
+class ClientResolution:
+    """Cómo se resolvió la IP del cliente: la IP, de dónde salió y la cabecera `X-Forwarded-For` ya partida."""
+
+    ip: str
+    source: Literal["peer", "xff"]
+    xff_index_from_right: int | None  # 0 = entrada más a la derecha; None si se usó el peer
+    xff_entries: list[str]
+
+
+def resolve_client(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> ClientResolution:
     """IP del cliente: el peer del socket, salvo que sea un proxy confiable y haya `X-Forwarded-For` válido.
 
     Se recorre la cabecera de derecha a izquierda y se devuelve la primera IP que no sea proxy confiable;
     con `*` (todo confiable) se toma la última. Cualquier valor no-IP → se usa el peer. Un peer que no es IP
-    (p. ej. "testclient") nunca es confiable.
+    (p. ej. "testclient") nunca es confiable. Devuelve además qué entrada se usó (índice desde la derecha).
     """
     fallback = peer or "unknown"
+    entries = [e.strip() for e in forwarded_for.split(",")] if forwarded_for else []
+    from_peer = ClientResolution(fallback, "peer", None, entries)
     peer_ip = _as_ip(peer)
     if peer_ip is None or peer_ip not in trusted or not forwarded_for:
-        return fallback
-    entries = [e.strip() for e in forwarded_for.split(",")]
-    for entry in reversed(entries):
+        return from_peer
+    for index, entry in enumerate(reversed(entries)):
         ip = _as_ip(entry)
         if ip is None:
-            return fallback
+            return from_peer
         if trusted.all or ip not in trusted:
-            return str(ip)
-    return fallback
+            return ClientResolution(str(ip), "xff", index, entries)
+    return from_peer
+
+
+def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> str:
+    """Solo la IP de `resolve_client`."""
+    return resolve_client(peer, forwarded_for, trusted).ip
+
+
+def mask_ip(value: str) -> str:
+    """Versión enmascarada para logs: IPv4 `a.b.x.x`; IPv6 (o red /64) `p1:p2:x:x::/64`; no-IP `<no-ip>`.
+    Se quita el puerto antes; una IPv4 mapeada en IPv6 se trata como IPv4. Nunca devuelve una IP completa."""
+    value = value.strip()
+    parsed: IPAddress | None
+    if "/" in value:
+        try:
+            parsed = ipaddress.ip_network(value, strict=False).network_address
+        except ValueError:
+            parsed = None
+    else:
+        parsed = _as_ip(value)
+    if parsed is None:
+        return "<no-ip>"
+    if isinstance(parsed, ipaddress.IPv6Address):
+        if parsed.ipv4_mapped is not None:
+            parsed = parsed.ipv4_mapped
+        else:
+            first, second = parsed.packed[0] << 8 | parsed.packed[1], parsed.packed[2] << 8 | parsed.packed[3]
+            return f"{first:x}:{second:x}:x:x::/64"
+    a, b = str(parsed).split(".")[:2]
+    return f"{a}.{b}.x.x"
 
 
 class SlidingWindowLimiter:

@@ -86,6 +86,46 @@ Abre `<URL>/docs` (la página interactiva de FastAPI) y prueba `POST /ask` con u
 
 Para comprobar el límite por IP, repite `/ask` más de `ASK_RATE_LIMIT_PER_HOUR` veces (cada pregunta cuesta una fracción de centavo; mejor bajar `ASK_RATE_LIMIT_PER_HOUR` a 3 para la prueba y devolverlo después): la siguiente debe dar 429 con `Retry-After`; `/health` nunca se limita.
 
+### Verificar la clave del límite por IP
+
+Esto es para el dueño: se hace a mano contra tu servicio de Render. Sirve para ver qué clave usa el límite detrás del proxy de Render (D37). Render no documenta qué hace con `X-Forwarded-For`, así que la respuesta sale de los logs, no de una suposición.
+
+Qué se usa para provocar el 429: `POST /ask` con cuerpo `{}`. Falla la validación (422) pero **consume cupo sin gastar tokens** (D37); `/health` no pasa por el limitador. El cupo es `ASK_RATE_LIMIT_PER_HOUR` (20 por defecto; mira el valor real en las variables del servicio en Render). Si es otro número, cambia el 21 de abajo por ese número + 1.
+
+**Aviso:** cada tanda deja `/ask` bloqueado una hora desde esa red (un deploy reinicia el contador y lo desbloquea).
+
+Con `<URL>` = la dirección de tu servicio. En PowerShell, cada comando imprime el código HTTP de cada petición y al final un conteo por código:
+
+```powershell
+# Caso A (red fija, sin cabecera extra): 21 peticiones
+1..21 | ForEach-Object { curl.exe -s -o NUL -w "%{http_code}`n" -X POST "<URL>/ask" -H "Content-Type: application/json" --data-binary "{}" } | Group-Object | Select-Object Name, Count
+
+# Caso B (misma red, dentro de la misma hora que A): 1 petición con la cabecera falsificada
+curl.exe -s -o NUL -w "%{http_code}`n" -X POST "<URL>/ask" -H "Content-Type: application/json" -H "X-Forwarded-For: 203.0.113.7" --data-binary "{}"
+
+# Caso C (otra red, p. ej. datos móviles del celular compartidos al PC): 21 peticiones
+1..21 | ForEach-Object { curl.exe -s -o NUL -w "%{http_code}`n" -X POST "<URL>/ask" -H "Content-Type: application/json" --data-binary "{}" } | Group-Object | Select-Object Name, Count
+```
+
+Dónde mirar: Render, servicio `docs-agent`, Logs, buscar `rate limit 429`. Cada 429 deja una línea así (todo enmascarado, nunca una IP completa):
+
+```
+rate limit 429: key=181.65.x.x source=xff index_from_right=0 entries=2 xff=[203.0.x.x, 181.65.x.x]
+```
+
+Qué esperar y qué confirma cada caso:
+
+- **A:** 20 × 422 y la 21.ª da 429 (el conteo debe salir `422: 20` y `429: 1`). Anota de la línea del log: `key`, `source` (debe ser `xff`), `index_from_right` y `entries`.
+- **B:** 429 de inmediato. Su línea debe tener la **misma** `key` que A, con `203.0.x.x` a la izquierda en `xff=[...]` (una entrada más que en A) y el mismo `index_from_right`.
+- **C:** 429 en la 21.ª, con una `key` **distinta** de la de A.
+
+Cómo leerlo:
+
+- Misma `key` en A y B, `key` distinta en C y `entries` estable: la clave es por cliente, y la entrada de la derecha es la que agrega el proxy de Render (lo que escribe el cliente queda a la izquierda).
+- `entries` que varía, o una `key` que cambia en la misma red sin cambiar de IP pública: hay un salto propio de Render a la derecha y la clave es ese salto. Habría que confiar en N saltos desde la derecha en vez de `*`; ese ajuste se acuerda aparte.
+
+Pega las tres líneas del log (ya enmascaradas) en D37.
+
 ## 6. Operación y cuidados
 
 - **Local con n8n:** con el valor por defecto (20/h), un n8n local que llame a `/ask` más de 20 veces por hora recibe 429. En tu `.env` local pon `ASK_RATE_LIMIT_PER_HOUR` más alto o `0`.
