@@ -294,3 +294,31 @@ def test_hops_untrusted_peer_uses_peer_regardless_of_xff():
 def test_hops_zero_keeps_legacy_behavior():
     r = resolve_client("10.0.0.1", "9.9.9.9, 5.6.7.8, 10.0.0.2", parse_trusted("10.0.0.0/8"), hops=0)
     assert (r.ip, r.source, r.xff_index_from_right) == ("5.6.7.8", "xff", 1)
+
+
+def test_hops_trailing_and_empty_entries_do_not_count():
+    t = parse_trusted("*")
+    r = resolve_client("10.29.5.6", REAL_CHAIN + ",", t, hops=2)
+    assert (r.ip, r.source, r.xff_index_from_right) == ("38.19.1.2", "xff", 2)
+    assert len(r.xff_entries) == 3
+    r2 = resolve_client("10.29.5.6", "38.19.1.2,,172.68.3.4, ,10.29.5.6", t, hops=2)
+    assert r2.ip == "38.19.1.2" and len(r2.xff_entries) == 3
+
+
+@pytest.mark.parametrize(
+    "cf, key, expected",
+    [
+        ("38.19.1.2", "38.19.1.2", "yes"),
+        ("::ffff:38.19.1.2", "38.19.1.2", "yes"),
+        ("2001:db8:1:2::9", limit_key("2001:db8:1:2::1"), "yes"),
+        ("8.8.4.4", "38.19.1.2", "no"),
+        ("basura", "38.19.1.2", "no"),
+        (None, "38.19.1.2", "absent"),
+        ("38.19.1.2", "untrusted-chain", "n/a"),
+        (None, "untrusted-chain", "absent"),
+    ],
+)
+def test_cf_ip_match(cf, key, expected):
+    from docs_agent.ratelimit import cf_ip_match
+
+    assert cf_ip_match(cf, key) == expected

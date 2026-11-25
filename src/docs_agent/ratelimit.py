@@ -128,7 +128,7 @@ def resolve_client(
     es confiable.
     """
     fallback = peer or "unknown"
-    entries = [e.strip() for e in forwarded_for.split(",")] if forwarded_for else []
+    entries = [e for e in (p.strip() for p in forwarded_for.split(",")) if e] if forwarded_for else []
     from_peer = ClientResolution(fallback, "peer", None, entries)
     peer_ip = _as_ip(peer)
     if peer_ip is None or peer_ip not in trusted:
@@ -151,6 +151,19 @@ def resolve_client(
         if trusted.all or ip not in trusted:
             return ClientResolution(str(ip), "xff", index, entries)
     return from_peer
+
+
+def cf_ip_match(cf_header: str | None, client_key: str) -> str:
+    """Diagnóstico para el log del 429: `absent` si falta `CF-Connecting-IP`; `n/a` si la clave resuelta no es una
+    IP (p. ej. `untrusted-chain`); `yes` si ambas normalizan a la misma clave (`limit_key`); si no, `no`.
+    Nunca se usa para la clave del limitador ni se loguea su valor."""
+    if cf_header is None:
+        return "absent"
+    if _as_ip(client_key) is None and "<no-ip>" == mask_ip(client_key):  # ni IP ni red /64
+        return "n/a"
+    if _as_ip(cf_header) is None:
+        return "no"
+    return "yes" if limit_key(cf_header) == limit_key(client_key) else "no"  # limit_key es idempotente en redes
 
 
 def client_ip(peer: str | None, forwarded_for: str | None, trusted: TrustedProxies) -> str:

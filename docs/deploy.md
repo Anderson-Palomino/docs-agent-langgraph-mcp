@@ -125,7 +125,7 @@ Dónde mirar: Render, servicio `docs-agent`, Logs, buscar `rate limit 429`. Cada
 rate limit 429: key=38.19.x.x key_id=3fa9c01b source=xff index_from_right=2 entries=4 cf_ip_match=yes xff=[203.0.x.x, 38.19.x.x, 172.68.x.x, 10.29.x.x]
 ```
 
-`cf_ip_match` compara la cabecera `CF-Connecting-IP` con la IP resuelta (nunca se loguea su valor ni se usa para la clave): `yes` si coinciden, `no` si es distinta o no es una IP, `absent` si no llegó.
+`cf_ip_match` compara la cabecera `CF-Connecting-IP` con la IP resuelta (nunca se loguea su valor ni se usa para la clave): `yes` si coinciden (normalizadas igual que la clave, p. ej. `::ffff:1.2.3.4` = `1.2.3.4`), `no` si es distinta o no es una IP, `absent` si no llegó, `n/a` si la clave resuelta no es una IP (p. ej. `untrusted-chain`).
 
 Qué esperar y qué confirma cada caso:
 

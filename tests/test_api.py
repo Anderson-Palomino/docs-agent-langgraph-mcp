@@ -568,3 +568,19 @@ def test_negative_trusted_proxy_hops_rejected():
 
     with pytest.raises(ValueError):
         Settings(_env_file=None, trusted_proxy_hops=-1)
+
+
+def test_ask_rate_limit_short_chains_share_one_quota_and_log(make_client, caplog):
+    import logging
+
+    from tests.fakes import FakeOpenAI
+
+    make_client(FakeOpenAI(), openai_api_key="", ask_rate_limit_per_hour=1, trusted_proxy_ips="*", trusted_proxy_hops=2)
+    c = _peer_client("10.29.5.6")
+    with caplog.at_level(logging.WARNING):
+        r1 = c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "38.19.1.2, 10.29.5.6"})
+        r2 = c.post("/ask", json={"question": "x"}, headers={"X-Forwarded-For": "179.7.8.9, 10.29.5.6"})
+    assert (r1.status_code, r2.status_code) == (503, 429)
+    msg = [x for x in caplog.records if "rate limit 429" in x.getMessage()][0].getMessage()
+    assert "key=untrusted-chain" in msg and "source=xff-short" in msg and "cf_ip_match=absent" in msg
+    assert "38.19.1.2" not in msg and "179.7.8.9" not in msg

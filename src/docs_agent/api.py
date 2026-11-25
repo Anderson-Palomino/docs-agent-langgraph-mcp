@@ -26,7 +26,7 @@ from docs_agent.ratelimit import (
     UNTRUSTED_CHAIN,
     SlidingWindowLimiter,
     TrustedProxies,
-    _as_ip,
+    cf_ip_match,
     key_id,
     limit_key,
     mask_ip,
@@ -118,12 +118,7 @@ def enforce_rate_limit(request: Request) -> None:
         # Diagnóstico de D37: qué clave se usó y de dónde salió, siempre enmascarada (nunca una IP completa).
         # `key_id` permite comparar claves sin la ambigüedad del /16; solo se enmascaran las últimas 5 entradas.
         entries = resolved.xff_entries
-        cf = request.headers.get("cf-connecting-ip")
-        if cf is None:
-            cf_match = "absent"
-        else:
-            cf_ip, client = _as_ip(cf), _as_ip(resolved.ip)
-            cf_match = "yes" if cf_ip is not None and cf_ip == client else "no"
+        cf_match = cf_ip_match(request.headers.get("cf-connecting-ip"), key)
         shown = ", ".join(mask_ip(e) for e in entries[-5:])
         logger.warning(
             "rate limit 429: key=%s key_id=%s source=%s index_from_right=%s entries=%d cf_ip_match=%s xff=[%s]",
