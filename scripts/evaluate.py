@@ -60,6 +60,9 @@ def _new_row(case) -> dict:
         "reason": None,
         "is_fastapi": None,
         "classifier_reason": None,
+        "language": None,  # idioma que detectó el clasificador ("es" | "en")
+        "search_query": None,  # consulta que el grafo realmente usó para buscar
+        "translated": None,  # True si la consulta de búsqueda es una traducción de la pregunta
         "best_distance": None,
         "retrieved_urls": [],
         "citations": [],
@@ -95,6 +98,9 @@ def _fill_from_state(row: dict, state: dict, judge_context) -> None:
         reason=state.get("reason"),
         is_fastapi=state.get("reason") != "out_of_domain",  # solo el clasificador pone `out_of_domain`
         classifier_reason=state.get("classifier_reason"),
+        language=state.get("language"),
+        search_query=state.get("search_query"),
+        translated=state.get("translated"),
         best_distance=state.get("best_distance"),
         retrieved_urls=[r["url"] for r in state.get("results") or []],
         citations=[c["url"] if isinstance(c, dict) else c.url for c in state.get("citations", [])],
@@ -175,7 +181,7 @@ async def run_cases(
             _fill_from_state(row, state, judge_context)
             if state["reason"] == "out_of_domain":
                 # No buscó: búsqueda aparte solo para `best_distance` y URLs; no cambia la ruta registrada.
-                extra = await tools.call("search_docs", {"query": case.question, "k": settings.top_k})
+                extra = await tools.call("search_docs", {"query": state.get("search_query") or case.question, "k": settings.top_k})
                 row["best_distance"] = extra["best_distance"]
                 row["retrieved_urls"] = list(dict.fromkeys(r["url"] for r in extra["results"]))
                 row["usage"]["embedding_tokens"] = row["usage"].get("embedding_tokens", 0) + extra.get(

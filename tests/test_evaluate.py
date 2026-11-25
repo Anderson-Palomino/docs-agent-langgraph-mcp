@@ -23,7 +23,9 @@ QUERY = "https://fastapi.tiangolo.com/tutorial/query-params/"
 Q_ANSWER = "How do I declare a request body?"
 Q_OUT = "How do I bake a pizza?"  # el clasificador la corta
 Q_THRESHOLD = "How do I configure Django REST Framework permissions?"  # la corta el umbral
-BEST = {Q_ANSWER: 0.30, Q_OUT: 0.80, Q_THRESHOLD: 0.70}
+Q_FLASK = "Flask blueprint"  # consulta en inglés que el clasificador devuelve para una pregunta en español
+Q_REQ_BODY = "request body"
+BEST = {Q_ANSWER: 0.30, Q_OUT: 0.80, Q_THRESHOLD: 0.70, Q_FLASK: 0.85, Q_REQ_BODY: 0.30}
 SECTION = {"url": BODY, "title": "Request Body", "content": "FULL SECTION TEXT about Pydantic models as body"}
 CHAT_TOKENS = 120  # FakeOpenAI: 100 de entrada + 20 de salida por llamada de chat
 
@@ -103,6 +105,37 @@ def run(ev, db_conn, *, client=None, tools=None, judge=True, max_tokens=400_000)
             judge=judge, max_tokens=max_tokens, console=console,
         )
     )
+
+
+def _run_one(ev, db_conn, case_id, client, tools):
+    import asyncio
+
+    case = next(c for c in golden_cases() if c.id == case_id)
+    console = Console(file=io.StringIO())
+    results, aborted = asyncio.run(
+        ev.run_cases([case], settings(), db_conn, client, tools, judge=False, max_tokens=400_000, console=console)
+    )
+    assert aborted is None
+    return results[0]
+
+
+def test_row_records_language_search_query_and_translated(ev, db_conn):
+    row = _run_one(ev, db_conn, "g01", PerQuestionOpenAI(language="es", search_query=Q_REQ_BODY), QuestionTools())
+    assert (row["language"], row["search_query"], row["translated"]) == ("es", Q_REQ_BODY, True)
+
+
+def test_out_of_domain_extra_search_uses_search_query(ev, db_conn):
+    tools = QuestionTools()
+    row = _run_one(ev, db_conn, "g02", PerQuestionOpenAI(language="es", search_query=Q_FLASK), tools)
+    assert ("search_docs", {"query": Q_FLASK, "k": 5}) in tools.calls
+    assert row["best_distance"] == 0.85 and row["search_query"] == Q_FLASK
+
+
+def test_out_of_domain_extra_search_english_uses_question(ev, db_conn):
+    tools = QuestionTools()
+    row = _run_one(ev, db_conn, "g02", PerQuestionOpenAI(language="en"), tools)
+    assert ("search_docs", {"query": Q_OUT, "k": 5}) in tools.calls
+    assert row["language"] == "en" and row["translated"] is False
 
 
 def _two_case_file(tmp_path: Path) -> Path:
